@@ -1,4 +1,4 @@
-# Manuelle Dashboardkarte
+# UI Karte
 
 Eine frei konfigurierbare Home-Assistant-Lovelace-Karte mit zwei Layouts:
 
@@ -42,15 +42,15 @@ dafür nicht im offiziellen HACS-Store gelistet sein.
 `.js`-Datei im Repository denselben Namen trägt wie das Repository selbst
 (Ausnahme: Repository-Namen mit Präfix `lovelace-`, dort darf die Datei den
 Rest des Namens ohne Präfix tragen). Diese Karte heißt
-`manuelle-dashboardkarte-card.js` - das neue GitHub-Repository muss also
-entweder exakt **`manuelle-dashboardkarte-card`** heißen, oder z. B.
-**`lovelace-manuelle-dashboardkarte-card`**. Bei einem anderen Namen bitte
+`ui-karte.js` - das neue GitHub-Repository muss also
+entweder exakt **`ui-karte`** heißen, oder z. B.
+**`lovelace-ui-karte`**. Bei einem anderen Namen bitte
 zusätzlich die `.js`-Datei entsprechend umbenennen (und `filename` in
 `hacs.json` anpassen).
 
 1. Neues **öffentliches** GitHub-Repository mit passendem Namen (siehe
    oben) anlegen.
-2. Den Inhalt dieses Ordners (`manuelle-dashboardkarte-card.js`,
+2. Den Inhalt dieses Ordners (`ui-karte.js`,
    `hacs.json`, `README.md`) 1:1 in das neue Repository hochladen/pushen -
    alle drei Dateien müssen im **Wurzelverzeichnis** liegen, nicht in einem
    Unterordner.
@@ -67,22 +67,22 @@ zusätzlich die `.js`-Datei entsprechend umbenennen (und `filename` in
 
 ## Installation (manuell, ohne HACS)
 
-1. Datei `manuelle-dashboardkarte-card.js` nach
+1. Datei `ui-karte.js` nach
    `<Home-Assistant-Konfigurationsverzeichnis>/www/` kopieren (Ordner `www`
    im Zweifel selbst anlegen, falls noch nicht vorhanden - alles darin ist
    automatisch unter `/local/...` erreichbar).
 2. Einstellungen → Dashboards → oben rechts die drei Punkte →
    **Ressourcen** → **+ Ressource hinzufügen**.
-   - URL: `/local/manuelle-dashboardkarte-card.js`
+   - URL: `/local/ui-karte.js`
    - Ressourcentyp: **JavaScript-Modul**
 3. Seite einmal neu laden (F5) - danach steht der Kartentyp
-   **"Manuelle Dashboardkarte"** in der normalen Kartenauswahl zur
+   **"UI Karte"** in der normalen Kartenauswahl zur
    Verfügung.
 
 ## Karte hinzufügen
 
 1. Auf einem Dashboard **Bearbeiten** → **+ Karte hinzufügen**.
-2. Nach "Manuelle Dashboardkarte" suchen (oder unten in der Liste, Kategorie
+2. Nach "UI Karte" suchen (oder unten in der Liste, Kategorie
    "Von diesem Server").
 3. Es öffnet sich direkt der grafische Editor mit Live-Vorschau - Titel
    vergeben, unter "Darstellung" das gewünschte Layout wählen (Liste oder
@@ -91,7 +91,7 @@ zusätzlich die `.js`-Datei entsprechend umbenennen (und `filename` in
 Alternativ funktioniert auch die YAML-Ansicht des Karten-Editors, z. B.:
 
 ```yaml
-type: custom:manuelle-dashboardkarte-card
+type: custom:ui-karte
 title: "Meine Sensoren"
 layout: list
 show_icon: true
@@ -138,7 +138,7 @@ umstellen. Es erscheinen dann:
 YAML-Beispiel für dasselbe Ergebnis:
 
 ```yaml
-type: custom:manuelle-dashboardkarte-card
+type: custom:ui-karte
 title: "Eingangsbereich"
 layout: freeform
 canvas:

@@ -1,6 +1,6 @@
 {
-  "name": "Manuelle Dashboardkarte",
+  "name": "UI Karte",
   "render_readme": true,
   "content_in_root": true,
-  "filename": "manuelle-dashboardkarte-card.js"
+  "filename": "ui-karte.js"
 }
