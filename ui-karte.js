@@ -1,43 +1,52 @@
 /**
  * ui-karte
  * -----------------------------
- * Frei konfigurierbare Home-Assistant-Dashboard-Karte mit zwei Layouts:
+ * Frei konfigurierbare Home-Assistant-Dashboard-Karte: ein Canvas fester
+ * Höhe, auf dem sich beliebig viele Elemente frei mit der Maus (oder per
+ * Finger) positionieren lassen - siehe Editor-Abschnitt unten. Es gibt drei
+ * Elementtypen:
  *
- * - "list" (Standard, Rückwärtskompatibilität mit v1 dieser Karte): Sensoren
- *   als Liste/Zeilen, jede Zeile mit Icon, Name und Zustand.
- * - "freeform": ein Canvas fester Höhe, auf dem sich Text- und
- *   Sensor-Elemente frei mit der Maus (oder per Finger) positionieren
- *   lassen - siehe Editor-Abschnitt unten.
+ * - "text": frei formatierbarer Text.
+ * - "sensor": ein einzelner Sensor mit Icon, Name und Zustand/Attribut.
+ * - "list": eine Gruppe von Sensoren als Zeilen-Liste, selbst wieder frei
+ *   auf der Canvas positionierbar - siehe "Sensoren in dieser Liste" im
+ *   Editor. Ersetzt das frühere eigenständige Listen-Layout dieser Karte
+ *   (siehe Migration weiter unten).
  *
- * In beiden Layouts wird das Icon eines Sensors, genau wie bei der
- * fritzbox-anrufe-card (color_icon_* / color_row_icon dort), abhängig vom
- * aktuellen Zustand eingefärbt. Anders als dort ist die Zustand->Farbe-
- * Zuordnung hier aber nicht auf ein festes Set bekannter Zustände
- * (eingehend/ausgehend/...) beschränkt, sondern pro Sensor frei im Editor
- * definierbar - siehe "colors" im Konfigurationsschema unten.
+ * Bei "sensor"- und "list"-Elementen wird das Icon jedes Sensors, genau wie
+ * bei der fritzbox-anrufe-card (color_icon_* / color_row_icon dort),
+ * abhängig vom aktuellen Wert eingefärbt. Anders als dort ist die
+ * Wert->Farbe-Zuordnung hier aber nicht auf ein festes Set bekannter
+ * Zustände (eingehend/ausgehend/...) beschränkt, sondern pro Sensor frei im
+ * Editor definierbar - siehe "colors" im Konfigurationsschema unten.
+ *
+ * Angezeigter/abgeglichener Wert (per Sensor, "attribute"): standardmäßig
+ * leer, dann zählt der Hauptzustand (state.state). Wird stattdessen ein
+ * Attributname hinterlegt (im Editor per Dropdown aus den aktuell
+ * gemeldeten Attributen des gewählten Sensors auswählbar, oder frei
+ * eintippbar), wird stattdessen state.attributes[attribute] anzeigt UND
+ * für den Farbabgleich herangezogen.
  *
  * Grafischer, WYSIWYG-artiger Editor (getConfigElement):
- * - Allgemeine Darstellungsoptionen (Titel, Layout-Auswahl, Icon/Zustand/
- *   Einheit ein-/ausblenden, kompakte Darstellung) über ein Standard-
- *   <ha-form>.
- * - Layout "Liste": Sensoren per <ha-entity-picker> frei hinzufügen,
- *   entfernen und umsortieren.
- * - Layout "Frei": zusätzlich zu den Sensoren auch freie Textelemente;
- *   beide Elementtypen lassen sich auf einer eigenen, im Editor
- *   eingebetteten Canvas-Vorschau direkt mit der Maus/dem Finger
- *   verschieben (Pointer Events, siehe _attachDrag()) - jede Bewegung
- *   schreibt die neue Position sofort in die Konfiguration, wodurch sich
- *   auch die von Home Assistant selbst über dem Editor angezeigte
- *   Live-Vorschau der eigentlichen Karte in Echtzeit mitbewegt. X/Y lassen
- *   sich ergänzend auch als Zahl eingeben, für pixelgenaues Justieren ohne
- *   Maus.
- * - Sobald ein Sensor hinzugefügt wird (in beiden Layouts), klappt direkt
- *   dessen eigener Farb-Abschnitt auf: dort lassen sich beliebig viele
- *   Zustand->Farbe-Zuordnungen anlegen, jeweils mit grafischem Farbwähler
- *   (natives <input type="color">, wie im Farben-Bereich der
- *   fritzbox-anrufe-card) plus Textfeld für den vollen CSS-Wert. Ein
- *   "Aktuellen Zustand übernehmen"-Knopf legt aus dem gerade live
- *   gemeldeten Zustand direkt eine neue Zeile an.
+ * - Allgemeine Darstellungsoptionen (Titel, Icon/Zustand/Einheit ein-/
+ *   ausblenden) über ein Standard-<ha-form>.
+ * - Canvas-Einstellungen (Höhe, Hintergrundfarbe/-bild).
+ * - Elemente (Text/Sensor/Liste) per <ha-entity-picker>/Button hinzufügen,
+ *   entfernen, umsortieren und auf einer eigenen, im Editor eingebetteten
+ *   Canvas-Vorschau direkt mit der Maus/dem Finger verschieben (Pointer
+ *   Events, siehe _attachDrag()) - jede Bewegung schreibt die neue Position
+ *   sofort in die Konfiguration, wodurch sich auch die von Home Assistant
+ *   selbst über dem Editor angezeigte Live-Vorschau der eigentlichen Karte
+ *   in Echtzeit mitbewegt. X/Y lassen sich ergänzend auch als Zahl
+ *   eingeben, für pixelgenaues Justieren ohne Maus.
+ * - Sobald ein Sensor hinzugefügt wird, klappt direkt dessen eigener
+ *   Farb-Abschnitt auf: dort lassen sich beliebig viele Wert->Farbe-
+ *   Zuordnungen anlegen, jeweils per Dropdown aus plausiblen Werten (aktuell
+ *   gemeldeter Wert, typische Zustände der Entity-Domäne) oder frei über
+ *   "Eigener Wert ..." eingetippt, dazu ein grafischer Farbwähler (natives
+ *   <input type="color">, wie im Farben-Bereich der fritzbox-anrufe-card).
+ *   Ein "Aktuellen Zustand übernehmen"-Knopf legt aus dem gerade live
+ *   gemeldeten Wert direkt eine neue Zeile an.
  * - Weil Home Assistant beim Bearbeiten einer Karte automatisch eine Live-
  *   Vorschau der Karte selbst über dem Editor anzeigt, wirkt sich jede
  *   Änderung hier sofort sichtbar aus - das ist der WYSIWYG-Effekt, den
@@ -47,41 +56,39 @@
  *   zusätzlich selbst eine Mini-Vorschau mitbaut, weil <ha-form> keinen
  *   Selector-Typ für "Position per Maus ziehen" mitbringt.
  *
- * Farbzuordnung (per Sensor, "colors"): eine Liste aus { state, color }.
- * Der Rohzustand (state.state, z. B. "on"/"off"/"offen"/"22.5") wird exakt
- * (ohne Groß-/Kleinschreibung, getrimmt) mit dem hinterlegten "state"-Wert
- * verglichen - die erste Übereinstimmung gewinnt. Trifft keine Regel zu,
- * greift "default_color" (falls gesetzt), sonst bleibt das Icon in der vom
- * aktuellen Home-Assistant-Theme vorgegebenen Standardfarbe. Bewusst eine
- * einfache exakte Zuordnung (keine Zahlen-Schwellenwerte/Templates) - siehe
- * Projektentscheidung "Einfache Zustand->Farbe-Zuordnung".
+ * Wert->Farbe-Zuordnung (per Sensor, "colors"): eine Liste aus
+ * { state, color }. Der Rohwert (Hauptzustand oder gewähltes Attribut) wird
+ * exakt (ohne Groß-/Kleinschreibung, getrimmt) mit dem hinterlegten
+ * "state"-Wert verglichen - die erste Übereinstimmung gewinnt. Trifft keine
+ * Regel zu, greift "default_color" (falls gesetzt), sonst bleibt das Icon
+ * in der vom aktuellen Home-Assistant-Theme vorgegebenen Standardfarbe.
+ * Bewusst eine einfache exakte Zuordnung (keine Zahlen-Schwellenwerte/
+ * Templates) - siehe Projektentscheidung "Einfache Zustand->Farbe-
+ * Zuordnung".
+ *
+ * Migration von älteren Versionen dieser Karte: v1/v2 kannten noch ein
+ * eigenständiges Listen-Layout ("layout: list" mit top-level "entities").
+ * Eine so aufgebaute, gespeicherte Konfiguration wird beim Laden
+ * automatisch und verlustfrei in ein neues "list"-Element auf der Canvas
+ * umgewandelt (inkl. grober Canvas-Höhen-Anpassung) - siehe
+ * withCardDefaults(). Sobald im Editor irgendetwas geändert wird, wird die
+ * neue Struktur dauerhaft gespeichert.
  *
  * Konfigurationsschema (YAML-Äquivalent, komplett auch grafisch editierbar):
  *
  *   type: custom:ui-karte
- *   title: "Meine Sensoren"
- *   layout: list               # "list" (Standard) oder "freeform"
+ *   title: "Mein Dashboard-Ausschnitt"
  *   show_icon: true
  *   show_state: true
  *   show_unit: true
- *   dense: false
- *   entities:                  # nur im Layout "list" gerendert
- *     - entity: binary_sensor.haustuer
- *       name: "Haustür"            # optional, sonst friendly_name
- *       icon: "mdi:door"           # optional, sonst Entity-/Domänen-Icon
- *       default_color: ""          # optional Rückfallfarbe
- *       colors:
- *         - state: "on"
- *           color: "#db4437"
- *         - state: "off"
- *           color: "#4caf50"
- *   canvas:                    # nur im Layout "freeform" gerendert
+ *   canvas:
  *     height: 300               # Pixel
  *     background_color: ""
  *     background_image: ""
- *   elements:                  # nur im Layout "freeform" gerendert
+ *   elements:
  *     - type: sensor
  *       entity: sensor.aussentemperatur
+ *       attribute: ""           # leer = Hauptzustand, sonst z.B. "battery_level"
  *       x: 30                  # Prozent, Mittelpunkt des Elements
  *       y: 50
  *       colors: []
@@ -93,6 +100,22 @@
  *       color: ""
  *       bold: true
  *       align: center
+ *     - type: list
+ *       x: 50
+ *       y: 70
+ *       width: 60               # Prozent Canvas-Breite
+ *       dense: false
+ *       entities:
+ *         - entity: binary_sensor.haustuer
+ *           name: "Haustür"
+ *           icon: "mdi:door"
+ *           attribute: ""
+ *           default_color: ""
+ *           colors:
+ *             - state: "on"
+ *               color: "#db4437"
+ *             - state: "off"
+ *               color: "#4caf50"
  *
  * Nicht an echter Home-Assistant-Hardware/jeder Frontend-Version getestet
  * (dieses Projekt wurde ohne laufende Home-Assistant-Instanz entwickelt) -
@@ -175,8 +198,8 @@ function round1(value) {
 }
 
 // Grobe deutsche Übersetzung häufiger, technischer Rohzustände für die
-// Anzeige (NICHT für den Farb-Abgleich - dort zählt immer der Rohzustand,
-// siehe Moduldoku). Unbekannte Zustände werden unverändert angezeigt.
+// Anzeige (NICHT für den Farb-Abgleich - dort zählt immer der Rohwert,
+// siehe Moduldoku). Unbekannte Werte werden unverändert angezeigt.
 const STATE_DISPLAY_LABELS = {
   on: "An",
   off: "Aus",
@@ -206,6 +229,8 @@ const STATE_DISPLAY_LABELS = {
   cool: "Kühlen",
   auto: "Automatik",
   standby: "Standby",
+  true: "Ja",
+  false: "Nein",
 };
 
 // Grobe Icon-Vorgabe je Domäne, nur als letzter Rückfall, falls weder ein
@@ -239,53 +264,92 @@ function defaultIconForEntity(entityId, stateObj) {
   return DOMAIN_DEFAULT_ICONS[domainOf(entityId)] || "mdi:help-circle-outline";
 }
 
-function formatStateValue(stateObj, showUnit) {
-  if (!stateObj) return "";
-  const raw = stateObj.state;
-  const label = STATE_DISPLAY_LABELS[normalizeStateKey(raw)];
-  if (label) return label;
-  const unit = showUnit && stateObj.attributes ? stateObj.attributes.unit_of_measurement : "";
-  return unit ? `${raw} ${unit}` : String(raw);
+// Liefert den für Anzeige UND Farbabgleich relevanten Rohwert eines
+// Sensors: ohne gesetztes "attribute" der Hauptzustand (state.state), sonst
+// der Wert des gleichnamigen Eintrags in state.attributes. undefined, wenn
+// die Entity nicht gefunden wird oder das gewählte Attribut nicht
+// (mehr) existiert.
+function getRawValue(entityConfig, stateObj) {
+  if (!stateObj) return undefined;
+  const attribute = entityConfig && entityConfig.attribute;
+  if (!attribute) return stateObj.state;
+  return stateObj.attributes ? stateObj.attributes[attribute] : undefined;
+}
+
+// Formatiert einen Rohwert (siehe getRawValue()) für die Anzeige. Beim
+// Hauptzustand gilt weiterhin die deutsche Übersetzungstabelle plus
+// optionaler Einheitenanhang; bei Attributwerten (die praktisch jeden
+// JS-Typ annehmen können) eine einfache, robuste Textdarstellung.
+function formatDisplayValue(rawValue, attribute, stateObj, showUnit) {
+  if (rawValue === undefined || rawValue === null) return "";
+  if (!attribute) {
+    const label = STATE_DISPLAY_LABELS[normalizeStateKey(rawValue)];
+    if (label) return label;
+    const unit = showUnit && stateObj && stateObj.attributes ? stateObj.attributes.unit_of_measurement : "";
+    return unit ? `${rawValue} ${unit}` : String(rawValue);
+  }
+  if (typeof rawValue === "boolean") return rawValue ? "Ja" : "Nein";
+  if (Array.isArray(rawValue)) return rawValue.join(", ");
+  if (typeof rawValue === "object") {
+    try {
+      return JSON.stringify(rawValue);
+    } catch (e) {
+      return String(rawValue);
+    }
+  }
+  return String(rawValue);
 }
 
 // --- Konfigurations-Defaults --------------------------------------------
 
 const CARD_DEFAULTS = {
   title: "",
-  layout: "list",
   show_icon: true,
   show_state: true,
   show_unit: true,
-  dense: false,
-  entities: [],
   canvas: { height: 300, background_color: "", background_image: "" },
   elements: [],
 };
 
-const ENTITY_DEFAULTS = {
+// Gemeinsame Form eines einzelnen Sensors, egal ob als eigenständiges
+// "sensor"-Element auf der Canvas oder als Zeile innerhalb eines
+// "list"-Elements - siehe withEntityItemDefaults().
+const ENTITY_ITEM_DEFAULTS = {
   entity: "",
   name: "",
   icon: "",
+  attribute: "",
   default_color: "",
   colors: [],
 };
+
+function withEntityItemDefaults(entityConfig) {
+  const merged = { ...ENTITY_ITEM_DEFAULTS, ...(entityConfig || {}) };
+  merged.attribute = String(merged.attribute || "");
+  merged.colors = Array.isArray(merged.colors)
+    ? merged.colors.map((rule) => ({ state: String((rule && rule.state) || ""), color: String((rule && rule.color) || "") }))
+    : [];
+  return merged;
+}
 
 const CANVAS_DEFAULTS = { height: 300, background_color: "", background_image: "" };
 
-// Gemeinsame Felder aller Freeform-Elemente ("type" entscheidet, welche der
-// beiden folgenden Default-Sets zusätzlich gemischt werden). x/y sind
-// Prozentwerte (0-100) und bezeichnen den MITTELPUNKT des Elements (siehe
-// CSS transform: translate(-50%, -50%) in CARD_STYLES) - das entspricht
+function withCanvasDefaults(canvasConfig) {
+  const merged = { ...CANVAS_DEFAULTS, ...(canvasConfig || {}) };
+  merged.height = clampNumber(merged.height, 80, 4000, CANVAS_DEFAULTS.height);
+  return merged;
+}
+
+// Gemeinsame Felder aller Canvas-Elemente ("type" entscheidet, welches der
+// folgenden Default-Sets zusätzlich gemischt wird). x/y sind Prozentwerte
+// (0-100) und bezeichnen den MITTELPUNKT des Elements (siehe CSS
+// transform: translate(-50%, -50%) in CARD_STYLES) - das entspricht
 // intuitiv dem Punkt, an dem man beim Ziehen mit der Maus "zupackt".
 const ELEMENT_BASE_DEFAULTS = { type: "sensor", x: 50, y: 50 };
 
-const SENSOR_ELEMENT_DEFAULTS = {
-  entity: "",
-  name: "",
-  icon: "",
-  default_color: "",
-  colors: [],
-};
+// Ein eigenständiges Sensor-Element hat exakt dieselbe Form wie ein
+// Sensor-Eintrag innerhalb eines "list"-Elements.
+const SENSOR_ELEMENT_DEFAULTS = ENTITY_ITEM_DEFAULTS;
 
 const TEXT_ELEMENT_DEFAULTS = {
   text: "Text",
@@ -295,34 +359,18 @@ const TEXT_ELEMENT_DEFAULTS = {
   align: "center",
 };
 
-function withCardDefaults(config) {
-  const merged = { ...CARD_DEFAULTS, ...(config || {}) };
-  merged.layout = merged.layout === "freeform" ? "freeform" : "list";
-  merged.entities = Array.isArray(merged.entities) ? merged.entities.map(withEntityDefaults) : [];
-  merged.canvas = withCanvasDefaults(merged.canvas);
-  merged.elements = Array.isArray(merged.elements) ? merged.elements.map(withElementDefaults) : [];
-  return merged;
-}
-
-function withEntityDefaults(entityConfig) {
-  const merged = { ...ENTITY_DEFAULTS, ...(entityConfig || {}) };
-  merged.colors = Array.isArray(merged.colors)
-    ? merged.colors.map((rule) => ({ state: String((rule && rule.state) || ""), color: String((rule && rule.color) || "") }))
-    : [];
-  return merged;
-}
-
-function withCanvasDefaults(canvasConfig) {
-  const merged = { ...CANVAS_DEFAULTS, ...(canvasConfig || {}) };
-  merged.height = clampNumber(merged.height, 80, 4000, CANVAS_DEFAULTS.height);
-  return merged;
-}
+const LIST_ELEMENT_DEFAULTS = {
+  width: 60,
+  dense: false,
+  entities: [],
+};
 
 function withElementDefaults(elementConfig) {
   const base = { ...ELEMENT_BASE_DEFAULTS, ...(elementConfig || {}) };
-  base.type = base.type === "text" ? "text" : "sensor";
+  base.type = ["text", "list"].includes(base.type) ? base.type : "sensor";
   base.x = clampNumber(base.x, 0, 100, 50);
   base.y = clampNumber(base.y, 0, 100, 50);
+
   if (base.type === "text") {
     const merged = { ...TEXT_ELEMENT_DEFAULTS, ...base };
     merged.font_size = clampNumber(merged.font_size, 6, 200, TEXT_ELEMENT_DEFAULTS.font_size);
@@ -330,22 +378,70 @@ function withElementDefaults(elementConfig) {
     merged.bold = !!merged.bold;
     return merged;
   }
+
+  if (base.type === "list") {
+    const merged = { ...LIST_ELEMENT_DEFAULTS, ...base };
+    merged.width = clampNumber(merged.width, 10, 100, LIST_ELEMENT_DEFAULTS.width);
+    merged.dense = !!merged.dense;
+    merged.entities = Array.isArray(merged.entities) ? merged.entities.map(withEntityItemDefaults) : [];
+    return merged;
+  }
+
+  // sensor
   const merged = { ...SENSOR_ELEMENT_DEFAULTS, ...base };
+  merged.attribute = String(merged.attribute || "");
   merged.colors = Array.isArray(merged.colors)
     ? merged.colors.map((rule) => ({ state: String((rule && rule.state) || ""), color: String((rule && rule.color) || "") }))
     : [];
   return merged;
 }
 
-// Ermittelt die Icon-Farbe für einen Sensor (Listen-Zeile ODER
-// Freeform-Sensor-Element - beide haben dieselbe Form: colors[]/
-// default_color) anhand der konfigurierten Zustand->Farbe-Liste (erste
-// exakte Übereinstimmung gewinnt, Vergleich getrimmt/ohne
+function withCardDefaults(config) {
+  const raw = config || {};
+  const merged = { ...CARD_DEFAULTS, ...raw };
+  delete merged.layout;
+  delete merged.entities;
+  delete merged.dense;
+  merged.canvas = withCanvasDefaults(raw.canvas);
+  merged.elements = Array.isArray(raw.elements) ? raw.elements.map(withElementDefaults) : [];
+
+  // Migration: alte Konfigurationen (v1/v2 dieser Karte) kannten noch ein
+  // eigenständiges Listen-Layout mit top-level `entities`/`dense`/`layout`.
+  // Für Rückwärtskompatibilität wird so eine alte Konfiguration beim Laden
+  // automatisch verlustfrei in ein neues "list"-Element auf der Canvas
+  // umgewandelt (inkl. Höhen-Anpassung, damit alle Zeilen sichtbar
+  // bleiben). Sobald im Editor etwas geändert wird, wird die neue Struktur
+  // über config-changed dauerhaft gespeichert.
+  const hasLegacyEntities = Array.isArray(raw.entities) && raw.entities.length > 0;
+  if (hasLegacyEntities || raw.layout === "list") {
+    const legacyEntities = Array.isArray(raw.entities) ? raw.entities.map(withEntityItemDefaults) : [];
+    const listElement = withElementDefaults({
+      type: "list",
+      x: 50,
+      y: 50,
+      width: 90,
+      dense: !!raw.dense,
+      entities: legacyEntities,
+    });
+    const rowHeight = listElement.dense ? 34 : 56;
+    const neededHeight = Math.max(merged.canvas.height, legacyEntities.length * rowHeight + 24);
+    merged.canvas = { ...merged.canvas, height: clampNumber(neededHeight, 80, 4000, merged.canvas.height) };
+    merged.elements = [listElement, ...merged.elements];
+  }
+
+  return merged;
+}
+
+// Ermittelt die Icon-Farbe für einen Sensor (eigenständiges Element ODER
+// Zeile innerhalb eines "list"-Elements - beide haben dieselbe Form:
+// colors[]/default_color) anhand der konfigurierten Wert->Farbe-Liste
+// (erste exakte Übereinstimmung gewinnt, Vergleich getrimmt/ohne
 // Groß-Kleinschreibung), sonst default_color, sonst "" (= Theme-
-// Standardfarbe, kein Inline-Style gesetzt).
-function resolveEntityColor(entityConfig, stateObj) {
-  if (!stateObj) return "";
-  const currentKey = normalizeStateKey(stateObj.state);
+// Standardfarbe, kein Inline-Style gesetzt). rawValue kommt aus
+// getRawValue() - respektiert also ein evtl. gesetztes "attribute".
+function resolveEntityColor(entityConfig, rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") return "";
+  const currentKey = normalizeStateKey(rawValue);
   const rule = (entityConfig.colors || []).find((r) => normalizeStateKey(r.state) === currentKey && currentKey !== "");
   if (rule) {
     const sanitized = sanitizeColor(rule.color);
@@ -358,17 +454,16 @@ function resolveEntityColor(entityConfig, stateObj) {
 
 const CARD_STYLES = `
   ha-card { overflow: hidden; }
-  .mdk-content { padding: 4px 0 8px; }
+  .mdk-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--secondary-text-color, #727272);
+  }
   .mdk-title {
     padding: 12px 16px 4px;
     font-size: 1.2em;
     font-weight: 500;
     color: var(--primary-text-color, #212121);
-  }
-  .mdk-empty {
-    padding: 24px 16px;
-    text-align: center;
-    color: var(--secondary-text-color, #727272);
   }
   .mdk-row {
     display: flex;
@@ -402,8 +497,8 @@ const CARD_STYLES = `
     text-align: right;
   }
 
-  /* Freeform-Layout: absolut positionierte Elemente auf einer Canvas fester
-     Höhe - siehe _renderFreeformCanvas()/_renderFreeformElement(). x/y sind
+  /* Canvas: absolut positionierte Elemente auf einer Fläche fester Höhe -
+     siehe _renderFreeformCanvas()/_renderFreeformElement(). x/y sind
      Prozentwerte, transform zentriert das Element auf seinem Ankerpunkt
      (siehe ELEMENT_BASE_DEFAULTS-Kommentar oben). */
   .mdk-canvas {
@@ -451,6 +546,25 @@ const CARD_STYLES = `
     word-break: break-word;
     color: var(--primary-text-color, #212121);
   }
+
+  /* "list"-Element: eine Gruppe von Sensor-Zeilen, selbst frei auf der
+     Canvas positionierbar - anders als die übrigen Elementtypen linksbündig
+     und über die volle konfigurierte Breite (nicht zentriert-kompakt). */
+  .mdk-element.mdk-list-element {
+    align-items: stretch;
+    text-align: left;
+    max-width: none;
+  }
+  .mdk-list-block {
+    width: 100%;
+    background: var(--card-background-color, rgba(255, 255, 255, 0.85));
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+  }
+  .mdk-list-block .mdk-row { padding: 8px 10px; }
+  .mdk-list-block .mdk-row.dense { padding: 4px 10px; }
+  .mdk-list-block .mdk-empty { padding: 12px; font-size: 0.85em; }
 `;
 
 class UiKarteCard extends HTMLElement {
@@ -480,11 +594,7 @@ class UiKarteCard extends HTMLElement {
   getCardSize() {
     if (!this._config) return 1;
     const titleRow = this._config.title ? 1 : 0;
-    if (this._config.layout === "freeform") {
-      return Math.max(1, titleRow + Math.round((this._config.canvas.height || 300) / 50));
-    }
-    const rows = (this._config.entities && this._config.entities.length) || 0;
-    return Math.max(1, titleRow + rows);
+    return Math.max(1, titleRow + Math.round((this._config.canvas.height || 300) / 50));
   }
 
   static getConfigElement() {
@@ -498,7 +608,9 @@ class UiKarteCard extends HTMLElement {
     const entityIds = hass && hass.states ? Object.keys(hass.states).slice(0, 3) : [];
     return withCardDefaults({
       title: "Meine Sensoren",
-      entities: entityIds.map((entity) => ({ entity, colors: [] })),
+      elements: entityIds.map((entity, i) =>
+        withElementDefaults({ type: "sensor", entity, x: 20 + i * 30, y: 50, colors: [] })
+      ),
     });
   }
 
@@ -515,13 +627,13 @@ class UiKarteCard extends HTMLElement {
     };
   }
 
-  _renderRow(entityConfig) {
+  _renderRow(entityConfig, dense) {
     const stateObj = this._hass && this._hass.states ? this._hass.states[entityConfig.entity] : undefined;
     const name = entityConfig.name || (stateObj && stateObj.attributes && stateObj.attributes.friendly_name) || entityConfig.entity;
 
     if (!stateObj) {
       return `
-        <div class="mdk-row ${this._config.dense ? "dense" : ""}" data-entity="${escapeHtml(entityConfig.entity)}">
+        <div class="mdk-row ${dense ? "dense" : ""}" data-entity="${escapeHtml(entityConfig.entity)}">
           ${this._config.show_icon ? `<ha-icon class="mdk-row-icon unavailable" icon="mdi:help-circle-outline"></ha-icon>` : ""}
           <div class="mdk-row-main">
             <span class="mdk-row-name">${escapeHtml(name)}</span>
@@ -531,13 +643,14 @@ class UiKarteCard extends HTMLElement {
       `;
     }
 
-    const color = resolveEntityColor(entityConfig, stateObj);
+    const rawValue = getRawValue(entityConfig, stateObj);
+    const color = resolveEntityColor(entityConfig, rawValue);
     const icon = entityConfig.icon || defaultIconForEntity(entityConfig.entity, stateObj);
     const iconStyle = color ? ` style="color: ${escapeHtml(color)};"` : "";
-    const stateText = this._config.show_state ? formatStateValue(stateObj, this._config.show_unit) : "";
+    const stateText = this._config.show_state ? formatDisplayValue(rawValue, entityConfig.attribute, stateObj, this._config.show_unit) : "";
 
     return `
-      <div class="mdk-row ${this._config.dense ? "dense" : ""}" data-entity="${escapeHtml(entityConfig.entity)}">
+      <div class="mdk-row ${dense ? "dense" : ""}" data-entity="${escapeHtml(entityConfig.entity)}">
         ${this._config.show_icon ? `<ha-icon class="mdk-row-icon" icon="${escapeHtml(icon)}"${iconStyle}></ha-icon>` : ""}
         <div class="mdk-row-main">
           <span class="mdk-row-name">${escapeHtml(name)}</span>
@@ -545,6 +658,20 @@ class UiKarteCard extends HTMLElement {
         ${stateText ? `<div class="mdk-row-state">${escapeHtml(stateText)}</div>` : ""}
       </div>
     `;
+  }
+
+  _renderListBlock(elementConfig) {
+    const left = clampNumber(elementConfig.x, 0, 100, 50);
+    const top = clampNumber(elementConfig.y, 0, 100, 50);
+    const width = clampNumber(elementConfig.width, 10, 100, 60);
+    const posStyle = `left: ${left}%; top: ${top}%; width: ${width}%;`;
+
+    const entities = elementConfig.entities || [];
+    const rows = entities.length
+      ? entities.map((e) => this._renderRow(e, elementConfig.dense)).join("")
+      : `<div class="mdk-empty">Keine Sensoren in dieser Liste konfiguriert.</div>`;
+
+    return `<div class="mdk-element mdk-list-element" style="${posStyle}"><div class="mdk-list-block">${rows}</div></div>`;
   }
 
   _renderFreeformCanvas() {
@@ -559,12 +686,16 @@ class UiKarteCard extends HTMLElement {
     const elements = this._config.elements || [];
     const body = elements.length
       ? elements.map((el) => this._renderFreeformElement(el)).join("")
-      : `<div class="mdk-canvas-empty">Keine Elemente konfiguriert. Über den Karten-Editor Text- oder Sensor-Elemente hinzufügen und per Maus positionieren.</div>`;
+      : `<div class="mdk-canvas-empty">Keine Elemente konfiguriert. Über den Karten-Editor Text-, Sensor- oder Listen-Elemente hinzufügen und per Maus positionieren.</div>`;
 
     return `<div class="mdk-canvas" style="${styleParts.join(" ")}">${body}</div>`;
   }
 
   _renderFreeformElement(elementConfig) {
+    if (elementConfig.type === "list") {
+      return this._renderListBlock(elementConfig);
+    }
+
     const left = clampNumber(elementConfig.x, 0, 100, 50);
     const top = clampNumber(elementConfig.y, 0, 100, 50);
     const posStyle = `left: ${left}%; top: ${top}%;`;
@@ -599,10 +730,11 @@ class UiKarteCard extends HTMLElement {
       `;
     }
 
-    const color = resolveEntityColor(elementConfig, stateObj);
+    const rawValue = getRawValue(elementConfig, stateObj);
+    const color = resolveEntityColor(elementConfig, rawValue);
     const icon = elementConfig.icon || defaultIconForEntity(elementConfig.entity, stateObj);
     const iconStyle = color ? ` style="color: ${escapeHtml(color)};"` : "";
-    const stateText = this._config.show_state ? formatStateValue(stateObj, this._config.show_unit) : "";
+    const stateText = this._config.show_state ? formatDisplayValue(rawValue, elementConfig.attribute, stateObj, this._config.show_unit) : "";
 
     return `
       <div class="mdk-element clickable" style="${posStyle}"${dataEntityAttr}>
@@ -616,15 +748,7 @@ class UiKarteCard extends HTMLElement {
   _render() {
     if (!this._config) return;
 
-    let body;
-    if (this._config.layout === "freeform") {
-      body = this._renderFreeformCanvas();
-    } else {
-      const entities = this._config.entities || [];
-      body = entities.length
-        ? `<div class="mdk-content">${entities.map((e) => this._renderRow(e)).join("")}</div>`
-        : `<div class="mdk-content"><div class="mdk-empty">Keine Sensoren konfiguriert. Über den Karten-Editor Sensoren hinzufügen.</div></div>`;
-    }
+    const body = this._renderFreeformCanvas();
 
     this.shadowRoot.innerHTML = `
       <style>${CARD_STYLES}</style>
@@ -643,36 +767,33 @@ class UiKarteCard extends HTMLElement {
 // --- Editor ----------------------------------------------------------
 //
 // Aufbau in zwei Teilen, analog zur fritzbox-anrufe-card:
-// 1. Allgemeine Darstellungsoptionen (Titel, Layout, show_icon/show_state/
-//    show_unit/dense) über ein Standard-<ha-form> mit einer einzigen
+// 1. Allgemeine Darstellungsoptionen (Titel, show_icon/show_state/
+//    show_unit) über ein Standard-<ha-form> mit einer einzigen
 //    "Darstellung"-Gruppe.
-// 2. Ein layoutabhängiger Bereich - bewusst NICHT über <ha-form> gelöst
-//    (kein Selector-Typ kann dort verschachtelte, dynamisch wachsende
-//    Listen mit eigenem Innenleben wie einer Zustand->Farbe-Zuordnung samt
-//    grafischem Farbwähler ODER eine per Maus ziehbare Positions-Canvas
-//    abbilden), sondern mit einfachem, direkt erzeugtem HTML:
-//    <ha-entity-picker> zur Sensorauswahl, <input type="color"> plus
-//    Textfeld je Farbregel (identisches Muster wie im "Farben"-Abschnitt
-//    der fritzbox-anrufe-card), und im Freeform-Layout zusätzlich eine
-//    Canvas-Vorschau mit ziehbaren Markern (Pointer Events).
+// 2. Der Canvas-Bereich - bewusst NICHT über <ha-form> gelöst (kein
+//    Selector-Typ kann dort verschachtelte, dynamisch wachsende Listen mit
+//    eigenem Innenleben wie einer Wert->Farbe-Zuordnung samt grafischem
+//    Farbwähler ODER eine per Maus ziehbare Positions-Canvas abbilden),
+//    sondern mit einfachem, direkt erzeugtem HTML: <ha-entity-picker> zur
+//    Sensorauswahl, <input type="color"> plus Textfeld je Farbregel
+//    (identisches Muster wie im "Farben"-Abschnitt der
+//    fritzbox-anrufe-card), dazu eine Canvas-Vorschau mit ziehbaren Markern
+//    (Pointer Events).
 //
 // Wichtiges Prinzip gegen Fokus-/Eingabeverlust: ein volles Neu-Aufbauen
-// eines Abschnitts (z. B. this._rebuildEntityRows()/
-// this._rebuildElementRows()/this._rebuildCanvasPreview()) passiert
+// eines Abschnitts (z. B. this._rebuildElementRows()/
+// this._rebuildCanvasPreview()/this._rebuildListEntityRows()) passiert
 // AUSSCHLIESSLICH bei strukturellen Änderungen, die die Karte selbst über
-// ihre eigenen Buttons/Drag-Geste auslöst (Sensor/Element hinzufügen/
-// entfernen/verschieben in der Liste, Farbregel hinzufügen/entfernen,
-// Layout-Wechsel) - niemals als Reaktion auf einen neuen `hass`-Tick (der
-// bei jeder Zustandsänderung irgendeiner Home-Assistant-Entity system-weit
-// ankommt) und niemals bei einer reinen Texteingabe/einem Drag-Schritt
-// (Name/Icon/Zustand/Farbe/Position). Reine Werteänderungen mutieren
-// `this._config` und feuern `config-changed`, ohne das DOM neu
-// aufzubauen - dieselbe Grundidee wie beim `hass`-Setter/
-// `_updateColorSection()` der fritzbox-anrufe-card, hier aber einfacher
-// umgesetzt, weil Config-Mutation und DOM-Aufbau von Anfang an konsequent
-// getrennt sind. Beim Ziehen eines Markers (viele Mausbewegungen pro
-// Sekunde) ist das nicht nur eine Stilfrage, sondern notwendig: ein
-// DOM-Rebuild pro Pixel würde den Marker unter dem Mauszeiger "wegreißen".
+// ihre eigenen Buttons/Drag-Geste auslöst (Element/Sensor hinzufügen/
+// entfernen/verschieben) - niemals als Reaktion auf einen neuen
+// `hass`-Tick (der bei jeder Zustandsänderung irgendeiner Home-Assistant-
+// Entity system-weit ankommt) und niemals bei einer reinen Texteingabe/
+// einem Drag-Schritt (Name/Icon/Zustand/Farbe/Position). Reine
+// Werteänderungen mutieren `this._config` und feuern `config-changed`,
+// ohne das DOM neu aufzubauen. Beim Ziehen eines Markers (viele
+// Mausbewegungen pro Sekunde) ist das nicht nur eine Stilfrage, sondern
+// notwendig: ein DOM-Rebuild pro Pixel würde den Marker unter dem
+// Mauszeiger "wegreißen".
 
 const GENERAL_EDITOR_SCHEMA = [
   { name: "title", selector: { text: {} } },
@@ -684,33 +805,18 @@ const GENERAL_EDITOR_SCHEMA = [
     flatten: true,
     expanded: true,
     schema: [
-      {
-        name: "layout",
-        selector: {
-          select: {
-            mode: "dropdown",
-            options: [
-              { value: "list", label: "Liste (Zeilen)" },
-              { value: "freeform", label: "Frei positionierbar (mit der Maus verschieben)" },
-            ],
-          },
-        },
-      },
       { name: "show_icon", selector: { boolean: {} } },
       { name: "show_state", selector: { boolean: {} } },
       { name: "show_unit", selector: { boolean: {} } },
-      { name: "dense", selector: { boolean: {} } },
     ],
   },
 ];
 
 const GENERAL_EDITOR_LABELS = {
   title: "Titel",
-  layout: "Layout",
   show_icon: "Icon je Sensor anzeigen",
   show_state: "Zustand je Sensor anzeigen",
   show_unit: "Einheit an Zahlenwerte anhängen",
-  dense: "Kompakte Zeilen (nur Layout 'Liste')",
 };
 
 function computeGeneralEditorLabel(schemaItem) {
@@ -755,6 +861,25 @@ function presetColorsForEntity(entityId) {
   return preset ? preset.map((rule) => ({ ...rule })) : [];
 }
 
+// Typische Rohzustände je Domäne, NUR für die Dropdown-Vorschläge im
+// "Zustand"-Kombifeld einer Farbregel (siehe buildCombobox()/
+// _stateOptionsFor()) - unabhängig von PRESET_COLORS_BY_DOMAIN oben, das
+// zusätzlich auch gleich eine Farbe vorschlägt.
+const COMMON_STATE_OPTIONS_BY_DOMAIN = {
+  binary_sensor: ["on", "off"],
+  switch: ["on", "off"],
+  input_boolean: ["on", "off"],
+  light: ["on", "off"],
+  lock: ["locked", "unlocked", "locking", "unlocking", "jammed"],
+  cover: ["open", "closed", "opening", "closing"],
+  climate: ["heat", "cool", "auto", "off", "dry", "fan_only"],
+  fan: ["on", "off"],
+  person: ["home", "not_home"],
+  device_tracker: ["home", "not_home"],
+  media_player: ["playing", "paused", "idle", "off"],
+  automation: ["on", "off"],
+};
+
 // <input type="color"> verlangt zwingend die 6-stellige #rrggbb-Form -
 // gleiche Hilfsfunktionen wie im Farben-Editor der fritzbox-anrufe-card.
 const HEX_COLOR_RE = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
@@ -770,6 +895,80 @@ function normalizeHex(hex) {
 function swatchValueFor(rawColor, fallbackHex) {
   const trimmed = String(rawColor || "").trim();
   return HEX_COLOR_RE.test(trimmed) ? normalizeHex(trimmed) : fallbackHex;
+}
+
+// Generisches Dropdown+Freitext-Kombifeld: ein <select> mit den
+// übergebenen "options" plus einer letzten "Eigener Wert ..."-Option; wird
+// diese gewählt (oder passt der aktuelle Wert zu keiner Option), erscheint
+// stattdessen/zusätzlich ein Textfeld. Dadurch lässt sich sowohl aus
+// plausiblen Vorschlägen wählen als auch jeder beliebige Wert eintippen -
+// notwendig, weil sich z. B. die Zustände einer "sensor"-Domain-Entity
+// (Zahlen/Freitext) nicht sinnvoll abschließend aufzählen lassen.
+function buildCombobox({ options, value, customLabel, placeholder, onChange }) {
+  const CUSTOM_VALUE = "__custom__";
+  let currentOptions = options || [];
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "mdk-combo";
+
+  const select = document.createElement("select");
+  select.className = "mdk-input mdk-combo-select";
+
+  const customInput = document.createElement("input");
+  customInput.type = "text";
+  customInput.className = "mdk-input mdk-combo-custom";
+  customInput.placeholder = placeholder || "";
+
+  function populate(currentValue) {
+    select.innerHTML = "";
+    currentOptions.forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = opt.label;
+      select.appendChild(o);
+    });
+    const customOpt = document.createElement("option");
+    customOpt.value = CUSTOM_VALUE;
+    customOpt.textContent = customLabel || "Eigener Wert …";
+    select.appendChild(customOpt);
+
+    const matches = currentOptions.some((o) => o.value === String(currentValue || ""));
+    if (matches && currentValue !== "" && currentValue !== undefined) {
+      select.value = String(currentValue);
+      customInput.style.display = "none";
+    } else {
+      select.value = CUSTOM_VALUE;
+      customInput.style.display = "";
+      customInput.value = currentValue || "";
+    }
+  }
+  populate(value);
+
+  select.addEventListener("change", () => {
+    if (select.value === CUSTOM_VALUE) {
+      customInput.style.display = "";
+      customInput.value = "";
+      customInput.focus();
+      onChange(customInput.value);
+    } else {
+      customInput.style.display = "none";
+      onChange(select.value);
+    }
+  });
+  customInput.addEventListener("input", () => {
+    onChange(customInput.value);
+  });
+
+  wrapper.appendChild(select);
+  wrapper.appendChild(customInput);
+
+  return {
+    element: wrapper,
+    setOptions(newOptions, newValue) {
+      currentOptions = newOptions || [];
+      populate(newValue);
+    },
+  };
 }
 
 const EDITOR_STYLES = `
@@ -861,6 +1060,7 @@ const EDITOR_STYLES = `
   textarea.mdk-input { resize: vertical; min-height: 48px; }
   .mdk-checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 0.9em; color: var(--primary-text-color, #212121); }
   .mdk-bold-field { justify-content: flex-end; display: flex; }
+  .mdk-combo { display: flex; flex-direction: column; gap: 4px; width: 100%; }
   .mdk-colors {
     margin-top: 4px;
     border-top: 1px solid var(--divider-color, #e0e0e0);
@@ -916,7 +1116,7 @@ const EDITOR_STYLES = `
   .mdk-add-row-split { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
   .mdk-add-sensor-wrap { flex: 1 1 240px; min-width: 200px; }
 
-  /* Freeform: Canvas-Einstellungen + Drag-Vorschau im Editor */
+  /* Canvas-Einstellungen + Drag-Vorschau im Editor */
   .mdk-canvas-settings { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
   .mdk-canvas-editor {
     position: relative;
@@ -970,18 +1170,23 @@ const EDITOR_STYLES = `
     white-space: nowrap;
     max-width: 130px;
   }
+
+  /* "list"-Element: eigene, verschachtelte Sensoren-Liste im Editor */
+  .mdk-list-entities-heading { margin-top: 8px; }
 `;
 
 class UiKarteCardEditor extends HTMLElement {
   constructor() {
     super();
     this._pickers = [];
-    // Farbregel-Container, generisch für Listen-Sensoren UND
-    // Freeform-Sensor-Elemente, key-Format "entity-<index>"/"element-<index>"
-    // - siehe _buildColorSection().
+    // Farbregel-Container, generisch für alle Sensor-Kontexte (Element
+    // UND Zeile innerhalb eines "list"-Elements) - key-Format
+    // "element-<index>"/"list-<elementIndex>-<entityIndex>" - siehe
+    // _buildColorSection().
     this._colorRuleContainers = {};
     this._elementMarkers = {};
     this._positionInputs = {};
+    this._listEntitiesContainers = {};
     this._built = false;
   }
 
@@ -1028,14 +1233,9 @@ class UiKarteCardEditor extends HTMLElement {
   _generalValueChanged(ev) {
     ev.stopPropagation();
     // ev.detail.value enthält nur die im Schema gelisteten Schlüssel
-    // (title/layout/show_icon/show_state/show_unit/dense) - "entities"/
-    // "elements"/"canvas" bleiben aus dem bestehenden this._config
-    // unverändert erhalten.
-    const previousLayout = this._config.layout;
+    // (title/show_icon/show_state/show_unit) - "canvas"/"elements" bleiben
+    // aus dem bestehenden this._config unverändert erhalten.
     this._config = { ...this._config, ...ev.detail.value };
-    if (this._config.layout !== previousLayout) {
-      this._rebuildLayoutSection();
-    }
     this._emitConfigChanged();
   }
 
@@ -1054,190 +1254,14 @@ class UiKarteCardEditor extends HTMLElement {
     this._generalForm.addEventListener("value-changed", (ev) => this._generalValueChanged(ev));
     this.appendChild(this._generalForm);
 
-    this._layoutSectionContainer = document.createElement("div");
-    this.appendChild(this._layoutSectionContainer);
-
-    this._rebuildLayoutSection();
+    this._canvasSectionContainer = document.createElement("div");
+    this.appendChild(this._canvasSectionContainer);
+    this._buildCanvasSection(this._canvasSectionContainer);
   }
 
-  // Baut den kompletten layoutabhängigen Bereich neu auf (Liste <->
-  // Freeform) - passiert nur beim erstmaligen Aufbau und bei einem
-  // expliziten Layout-Wechsel durch den Nutzer, siehe
-  // _generalValueChanged().
-  _rebuildLayoutSection() {
-    this._pickers = this._pickers.filter((p) => p && p.isConnected);
-    this._colorRuleContainers = {};
-    this._elementMarkers = {};
-    this._positionInputs = {};
-    this._layoutSectionContainer.innerHTML = "";
-    if (this._config.layout === "freeform") {
-      this._buildFreeformSection(this._layoutSectionContainer);
-    } else {
-      this._buildListSection(this._layoutSectionContainer);
-    }
-  }
+  // --- Canvas mit Text-/Sensor-/Listen-Elementen --------------------------
 
-  // --- Layout "Liste" ----------------------------------------------------
-
-  _buildListSection(container) {
-    const heading = document.createElement("div");
-    heading.className = "mdk-editor-heading";
-    heading.innerHTML = `<ha-icon icon="mdi:format-list-bulleted"></ha-icon><span>Sensoren</span>`;
-    container.appendChild(heading);
-
-    const hint = document.createElement("div");
-    hint.className = "mdk-editor-hint";
-    hint.textContent =
-      "Jeder Sensor bekommt eine eigene, aufklappbare Zustand->Farbe-Zuordnung für sein Icon. Änderungen wirken sich sofort in der Kartenvorschau oben aus.";
-    container.appendChild(hint);
-
-    this._entitiesContainer = document.createElement("div");
-    this._entitiesContainer.className = "mdk-entities";
-    container.appendChild(this._entitiesContainer);
-
-    const addRow = document.createElement("div");
-    addRow.className = "mdk-add-row";
-    addRow.innerHTML = `<div class="mdk-add-row-label">Sensor hinzufügen</div>`;
-    this._newEntityPicker = document.createElement("ha-entity-picker");
-    this._newEntityPicker.hass = this._hass;
-    this._newEntityPicker.value = "";
-    this._newEntityPicker.label = "Entity auswählen …";
-    this._newEntityPicker.addEventListener("value-changed", (ev) => {
-      ev.stopPropagation();
-      const value = ev.detail.value;
-      if (value) this._addEntity(value);
-    });
-    this._pickers.push(this._newEntityPicker);
-    addRow.appendChild(this._newEntityPicker);
-    container.appendChild(addRow);
-
-    this._rebuildEntityRows();
-  }
-
-  _rebuildEntityRows() {
-    this._entitiesContainer.innerHTML = "";
-    const entities = this._config.entities || [];
-    if (!entities.length) {
-      const empty = document.createElement("div");
-      empty.className = "mdk-entities-empty";
-      empty.textContent = "Noch keine Sensoren hinzugefügt - unten einen Sensor auswählen.";
-      this._entitiesContainer.appendChild(empty);
-      return;
-    }
-    entities.forEach((entityConfig, index) => {
-      this._entitiesContainer.appendChild(this._buildEntityRow(entityConfig, index, entities.length));
-    });
-  }
-
-  _buildEntityRow(entityConfig, index, total) {
-    const details = document.createElement("details");
-    details.className = "mdk-entity";
-    details.open = !!entityConfig.__justAdded;
-    delete entityConfig.__justAdded;
-
-    const label = entityConfig.name || entityConfig.entity || "Neuer Sensor";
-
-    details.innerHTML = `
-      <summary class="mdk-entity-summary">
-        <ha-icon icon="mdi:chevron-right" class="mdk-entity-chevron"></ha-icon>
-        <span class="mdk-entity-summary-label">${escapeHtml(label)}</span>
-        <span class="mdk-entity-summary-actions">
-          <button type="button" class="mdk-icon-btn mdk-move-up" title="Nach oben verschieben" ${index === 0 ? "disabled" : ""}>
-            <ha-icon icon="mdi:arrow-up"></ha-icon>
-          </button>
-          <button type="button" class="mdk-icon-btn mdk-move-down" title="Nach unten verschieben" ${index === total - 1 ? "disabled" : ""}>
-            <ha-icon icon="mdi:arrow-down"></ha-icon>
-          </button>
-          <button type="button" class="mdk-icon-btn mdk-remove" title="Sensor entfernen">
-            <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-          </button>
-        </span>
-      </summary>
-      <div class="mdk-entity-body">
-        <div class="mdk-field-row">
-          <div class="mdk-field-label">Entity</div>
-          <ha-entity-picker class="mdk-entity-picker"></ha-entity-picker>
-        </div>
-        <div class="mdk-field-row mdk-field-row-split">
-          <div class="mdk-field">
-            <div class="mdk-field-label">Anzeigename (optional)</div>
-            <input type="text" class="mdk-input mdk-name-input" placeholder="z.B. Haustür" />
-          </div>
-          <div class="mdk-field">
-            <div class="mdk-field-label">Icon (optional, mdi:...)</div>
-            <input type="text" class="mdk-input mdk-icon-input" placeholder="mdi:door" />
-          </div>
-        </div>
-        <div class="mdk-colors-slot"></div>
-      </div>
-    `;
-
-    const summaryLabel = details.querySelector(".mdk-entity-summary-label");
-
-    // Klicks auf die Steuer-Buttons dürfen das <details>-Element nicht
-    // zusätzlich auf-/zuklappen (Standardverhalten jedes Klicks innerhalb
-    // von <summary>) - deshalb überall stopPropagation() zusätzlich zu
-    // preventDefault().
-    details.querySelector(".mdk-move-up").addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._moveEntity(index, -1);
-    });
-    details.querySelector(".mdk-move-down").addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._moveEntity(index, 1);
-    });
-    details.querySelector(".mdk-remove").addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._removeEntity(index);
-    });
-
-    const entityPicker = details.querySelector(".mdk-entity-picker");
-    entityPicker.hass = this._hass;
-    entityPicker.value = entityConfig.entity || "";
-    entityPicker.addEventListener("value-changed", (ev) => {
-      ev.stopPropagation();
-      const value = ev.detail.value || "";
-      this._updateEntity(index, { entity: value });
-      summaryLabel.textContent = nameInput.value || value || "Neuer Sensor";
-    });
-    this._pickers.push(entityPicker);
-
-    const nameInput = details.querySelector(".mdk-name-input");
-    nameInput.value = entityConfig.name || "";
-    nameInput.addEventListener("input", () => {
-      this._updateEntity(index, { name: nameInput.value });
-      summaryLabel.textContent = nameInput.value || entityPicker.value || "Neuer Sensor";
-    });
-
-    const iconInput = details.querySelector(".mdk-icon-input");
-    iconInput.value = entityConfig.icon || "";
-    iconInput.addEventListener("input", () => {
-      this._updateEntity(index, { icon: iconInput.value });
-    });
-
-    const colorsSlot = details.querySelector(".mdk-colors-slot");
-    colorsSlot.appendChild(
-      this._buildColorSection(
-        `entity-${index}`,
-        () => this._config.entities[index],
-        (patch) => this._updateEntity(index, patch),
-        () => {
-          const c = this._config.entities[index];
-          const stateObj = this._hass && this._hass.states ? this._hass.states[c.entity] : undefined;
-          return stateObj ? stateObj.state : undefined;
-        }
-      )
-    );
-
-    return details;
-  }
-
-  // --- Layout "Frei" (Freeform-Canvas mit Drag&Drop) ----------------------
-
-  _buildFreeformSection(container) {
+  _buildCanvasSection(container) {
     const canvasHeading = document.createElement("div");
     canvasHeading.className = "mdk-editor-heading";
     canvasHeading.innerHTML = `<ha-icon icon="mdi:image-frame"></ha-icon><span>Canvas</span>`;
@@ -1281,6 +1305,16 @@ class UiKarteCardEditor extends HTMLElement {
       this._addElement("text");
     });
     addRow.appendChild(addTextBtn);
+
+    const addListBtn = document.createElement("button");
+    addListBtn.type = "button";
+    addListBtn.className = "mdk-btn";
+    addListBtn.innerHTML = `<ha-icon icon="mdi:format-list-bulleted"></ha-icon><span>Liste hinzufügen</span>`;
+    addListBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      this._addElement("list");
+    });
+    addRow.appendChild(addListBtn);
 
     const addSensorWrap = document.createElement("div");
     addSensorWrap.className = "mdk-add-sensor-wrap";
@@ -1395,17 +1429,26 @@ class UiKarteCardEditor extends HTMLElement {
     });
   }
 
+  _elementMarkerIcon(elementConfig) {
+    if (elementConfig.type === "text") return "mdi:format-text";
+    if (elementConfig.type === "list") return "mdi:format-list-bulleted";
+    return "mdi:radar";
+  }
+
+  _elementMarkerLabel(elementConfig) {
+    if (elementConfig.type === "text") return elementConfig.text || "Text";
+    if (elementConfig.type === "list") return `Liste (${(elementConfig.entities || []).length})`;
+    return elementConfig.name || elementConfig.entity || "Sensor";
+  }
+
   _buildCanvasMarker(elementConfig, index) {
     const marker = document.createElement("div");
     marker.className = "mdk-marker";
     marker.style.left = `${elementConfig.x}%`;
     marker.style.top = `${elementConfig.y}%`;
 
-    const isText = elementConfig.type === "text";
-    marker.innerHTML = `<ha-icon icon="${isText ? "mdi:format-text" : "mdi:radar"}"></ha-icon><span class="mdk-marker-label"></span>`;
-    marker.querySelector(".mdk-marker-label").textContent = isText
-      ? elementConfig.text || "Text"
-      : elementConfig.name || elementConfig.entity || "Sensor";
+    marker.innerHTML = `<ha-icon icon="${this._elementMarkerIcon(elementConfig)}"></ha-icon><span class="mdk-marker-label"></span>`;
+    marker.querySelector(".mdk-marker-label").textContent = this._elementMarkerLabel(elementConfig);
 
     this._attachDrag(marker, index);
     this._elementMarkers[index] = marker;
@@ -1479,7 +1522,7 @@ class UiKarteCardEditor extends HTMLElement {
     if (!elements.length) {
       const empty = document.createElement("div");
       empty.className = "mdk-entities-empty";
-      empty.textContent = "Noch keine Elemente hinzugefügt - unten Text oder Sensor hinzufügen.";
+      empty.textContent = "Noch keine Elemente hinzugefügt - unten Text, Sensor oder Liste hinzufügen.";
       this._elementsContainer.appendChild(empty);
       return;
     }
@@ -1494,9 +1537,8 @@ class UiKarteCardEditor extends HTMLElement {
     details.open = !!elementConfig.__justAdded;
     delete elementConfig.__justAdded;
 
-    const isText = elementConfig.type === "text";
-    const label = isText ? elementConfig.text || "Text" : elementConfig.name || elementConfig.entity || "Sensor";
-    const typeIcon = isText ? "mdi:format-text" : "mdi:radar";
+    const label = this._elementMarkerLabel(elementConfig);
+    const typeIcon = this._elementMarkerIcon(elementConfig);
 
     details.innerHTML = `
       <summary class="mdk-entity-summary">
@@ -1571,8 +1613,10 @@ class UiKarteCardEditor extends HTMLElement {
     this._positionInputs[index] = { x: xInput, y: yInput };
 
     const slot = details.querySelector(".mdk-element-specific-slot");
-    if (isText) {
+    if (elementConfig.type === "text") {
       slot.appendChild(this._buildTextElementFields(index, summaryLabel));
+    } else if (elementConfig.type === "list") {
+      slot.appendChild(this._buildListElementFields(index, summaryLabel));
     } else {
       slot.appendChild(this._buildSensorElementFields(index, summaryLabel));
     }
@@ -1672,7 +1716,168 @@ class UiKarteCardEditor extends HTMLElement {
   }
 
   _buildSensorElementFields(index, summaryLabel) {
+    return this._buildEntityFields(
+      () => this._config.elements[index],
+      (patch) => this._updateElement(index, patch),
+      `element-${index}`,
+      (label) => {
+        if (summaryLabel) summaryLabel.textContent = label;
+        this._syncMarkerLabel(index, label);
+      }
+    );
+  }
+
+  _buildListElementFields(index, summaryLabel) {
     const elementConfig = this._config.elements[index];
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = `
+      <div class="mdk-field-row mdk-field-row-split">
+        <div class="mdk-field">
+          <div class="mdk-field-label">Breite (%)</div>
+          <input type="number" min="10" max="100" step="1" class="mdk-input mdk-list-width-input" />
+        </div>
+        <div class="mdk-field mdk-bold-field">
+          <label class="mdk-checkbox-label">
+            <input type="checkbox" class="mdk-list-dense-input" />
+            <span>Kompakte Zeilen</span>
+          </label>
+        </div>
+      </div>
+      <div class="mdk-editor-heading mdk-list-entities-heading"><ha-icon icon="mdi:format-list-bulleted"></ha-icon><span>Sensoren in dieser Liste</span></div>
+      <div class="mdk-entities mdk-list-entities-container"></div>
+      <div class="mdk-add-row">
+        <div class="mdk-add-row-label">Sensor zur Liste hinzufügen</div>
+      </div>
+    `;
+
+    const widthInput = wrapper.querySelector(".mdk-list-width-input");
+    widthInput.value = elementConfig.width;
+    widthInput.addEventListener("input", () => {
+      const width = clampNumber(widthInput.value, 10, 100, elementConfig.width);
+      this._updateElement(index, { width });
+    });
+
+    const denseInput = wrapper.querySelector(".mdk-list-dense-input");
+    denseInput.checked = !!elementConfig.dense;
+    denseInput.addEventListener("change", () => {
+      this._updateElement(index, { dense: denseInput.checked });
+    });
+
+    const listEntitiesContainer = wrapper.querySelector(".mdk-list-entities-container");
+    this._listEntitiesContainers[index] = listEntitiesContainer;
+    this._rebuildListEntityRows(index);
+
+    const addRow = wrapper.querySelector(".mdk-add-row");
+    const picker = document.createElement("ha-entity-picker");
+    picker.hass = this._hass;
+    picker.value = "";
+    picker.label = "Entity auswählen …";
+    picker.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      const value = ev.detail.value;
+      if (value) this._addListEntity(index, value);
+    });
+    this._pickers.push(picker);
+    addRow.appendChild(picker);
+
+    return wrapper;
+  }
+
+  _rebuildListEntityRows(elementIndex) {
+    const container = this._listEntitiesContainers[elementIndex];
+    if (!container) return;
+    container.innerHTML = "";
+    const elementConfig = this._config.elements[elementIndex];
+    const entities = (elementConfig && elementConfig.entities) || [];
+    if (!entities.length) {
+      const empty = document.createElement("div");
+      empty.className = "mdk-entities-empty";
+      empty.textContent = "Noch keine Sensoren in dieser Liste - unten einen Sensor auswählen.";
+      container.appendChild(empty);
+      return;
+    }
+    entities.forEach((entityConfig, entityIndex) => {
+      container.appendChild(this._buildListEntityRow(elementIndex, entityConfig, entityIndex, entities.length));
+    });
+  }
+
+  _buildListEntityRow(elementIndex, entityConfig, entityIndex, total) {
+    const details = document.createElement("details");
+    details.className = "mdk-entity";
+    details.open = !!entityConfig.__justAdded;
+    delete entityConfig.__justAdded;
+
+    const label = entityConfig.name || entityConfig.entity || "Neuer Sensor";
+
+    details.innerHTML = `
+      <summary class="mdk-entity-summary">
+        <ha-icon icon="mdi:chevron-right" class="mdk-entity-chevron"></ha-icon>
+        <span class="mdk-entity-summary-label">${escapeHtml(label)}</span>
+        <span class="mdk-entity-summary-actions">
+          <button type="button" class="mdk-icon-btn mdk-move-up" title="Nach oben verschieben" ${entityIndex === 0 ? "disabled" : ""}>
+            <ha-icon icon="mdi:arrow-up"></ha-icon>
+          </button>
+          <button type="button" class="mdk-icon-btn mdk-move-down" title="Nach unten verschieben" ${entityIndex === total - 1 ? "disabled" : ""}>
+            <ha-icon icon="mdi:arrow-down"></ha-icon>
+          </button>
+          <button type="button" class="mdk-icon-btn mdk-remove" title="Sensor entfernen">
+            <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+          </button>
+        </span>
+      </summary>
+      <div class="mdk-entity-body">
+        <div class="mdk-entity-fields-slot"></div>
+      </div>
+    `;
+
+    const summaryLabel = details.querySelector(".mdk-entity-summary-label");
+
+    details.querySelector(".mdk-move-up").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._moveListEntity(elementIndex, entityIndex, -1);
+    });
+    details.querySelector(".mdk-move-down").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._moveListEntity(elementIndex, entityIndex, 1);
+    });
+    details.querySelector(".mdk-remove").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._removeListEntity(elementIndex, entityIndex);
+    });
+
+    const slot = details.querySelector(".mdk-entity-fields-slot");
+    slot.appendChild(
+      this._buildEntityFields(
+        () => this._config.elements[elementIndex].entities[entityIndex],
+        (patch) => this._updateListEntity(elementIndex, entityIndex, patch),
+        `list-${elementIndex}-${entityIndex}`,
+        (labelText) => {
+          summaryLabel.textContent = labelText;
+        }
+      )
+    );
+
+    return details;
+  }
+
+  // --- Gemeinsame Sensor-Felder (eigenständiges "sensor"-Element UND Zeile
+  //     innerhalb eines "list"-Elements) -----------------------------------
+  //
+  // getEntity(): liefert das aktuelle Sensor-Konfigurationsobjekt (entity/
+  //   name/icon/attribute/default_color/colors).
+  // patchEntity(patch): mutiert genau dieses Objekt immutable und feuert
+  //   config-changed - reine Werteänderung, siehe Modulkommentar oben.
+  // colorKey: eindeutiger String zur Ablage des zugehörigen Farbregel-
+  //   Containers in this._colorRuleContainers.
+  // onLabelChange(label): wird bei jeder Änderung aufgerufen, die die
+  //   Zusammenfassungs-/Marker-Beschriftung beeinflusst (Entity-Auswahl,
+  //   Name).
+
+  _buildEntityFields(getEntity, patchEntity, colorKey, onLabelChange) {
+    const entityConfig = getEntity();
     const wrapper = document.createElement("div");
     wrapper.innerHTML = `
       <div class="mdk-field-row">
@@ -1689,74 +1894,135 @@ class UiKarteCardEditor extends HTMLElement {
           <input type="text" class="mdk-input mdk-icon-input" placeholder="mdi:thermometer" />
         </div>
       </div>
+      <div class="mdk-field-row">
+        <div class="mdk-field-label">Anzuzeigender/abzugleichender Wert</div>
+        <div class="mdk-attribute-slot"></div>
+      </div>
       <div class="mdk-colors-slot"></div>
     `;
 
     const entityPicker = wrapper.querySelector(".mdk-entity-picker");
     entityPicker.hass = this._hass;
-    entityPicker.value = elementConfig.entity || "";
+    entityPicker.value = entityConfig.entity || "";
+
+    const nameInput = wrapper.querySelector(".mdk-name-input");
+    nameInput.value = entityConfig.name || "";
+
+    const iconInput = wrapper.querySelector(".mdk-icon-input");
+    iconInput.value = entityConfig.icon || "";
+
+    const attributeSlot = wrapper.querySelector(".mdk-attribute-slot");
+    const colorsSlot = wrapper.querySelector(".mdk-colors-slot");
+
+    const rebuildAttributeCombo = () => {
+      attributeSlot.innerHTML = "";
+      const current = getEntity();
+      const stateObj = this._hass && this._hass.states ? this._hass.states[current.entity] : undefined;
+      const options = [{ value: "", label: "Zustand (state)" }];
+      if (stateObj && stateObj.attributes) {
+        Object.keys(stateObj.attributes).forEach((key) => options.push({ value: key, label: `Attribut: ${key}` }));
+      }
+      const combo = buildCombobox({
+        options,
+        value: current.attribute || "",
+        customLabel: "Anderes Attribut (Name eingeben) …",
+        placeholder: "z.B. battery_level",
+        onChange: (value) => {
+          patchEntity({ attribute: value });
+          rebuildColorSection();
+        },
+      });
+      attributeSlot.appendChild(combo.element);
+    };
+
+    const rebuildColorSection = () => {
+      colorsSlot.innerHTML = "";
+      colorsSlot.appendChild(
+        this._buildColorSection(
+          colorKey,
+          () => getEntity(),
+          (patch) => patchEntity(patch),
+          () => {
+            const c = getEntity();
+            const stateObj = this._hass && this._hass.states ? this._hass.states[c.entity] : undefined;
+            return getRawValue(c, stateObj);
+          }
+        )
+      );
+    };
+
     entityPicker.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
       const value = ev.detail.value || "";
-      this._updateEntity_forElement(index, { entity: value });
+      patchEntity({ entity: value, attribute: "" });
       const label = nameInput.value || value || "Sensor";
-      if (summaryLabel) summaryLabel.textContent = label;
-      this._syncMarkerLabel(index, label);
+      if (onLabelChange) onLabelChange(label);
+      rebuildAttributeCombo();
+      rebuildColorSection();
     });
     this._pickers.push(entityPicker);
 
-    const nameInput = wrapper.querySelector(".mdk-name-input");
-    nameInput.value = elementConfig.name || "";
     nameInput.addEventListener("input", () => {
-      this._updateEntity_forElement(index, { name: nameInput.value });
+      patchEntity({ name: nameInput.value });
       const label = nameInput.value || entityPicker.value || "Sensor";
-      if (summaryLabel) summaryLabel.textContent = label;
-      this._syncMarkerLabel(index, label);
+      if (onLabelChange) onLabelChange(label);
     });
 
-    const iconInput = wrapper.querySelector(".mdk-icon-input");
-    iconInput.value = elementConfig.icon || "";
     iconInput.addEventListener("input", () => {
-      this._updateEntity_forElement(index, { icon: iconInput.value });
+      patchEntity({ icon: iconInput.value });
     });
 
-    const colorsSlot = wrapper.querySelector(".mdk-colors-slot");
-    colorsSlot.appendChild(
-      this._buildColorSection(
-        `element-${index}`,
-        () => this._config.elements[index],
-        (patch) => this._updateElement(index, patch),
-        () => {
-          const c = this._config.elements[index];
-          const stateObj = this._hass && this._hass.states ? this._hass.states[c.entity] : undefined;
-          return stateObj ? stateObj.state : undefined;
-        }
-      )
-    );
+    rebuildAttributeCombo();
+    rebuildColorSection();
 
     return wrapper;
   }
 
-  // Kleiner Namens-Alias, damit an den Aufrufstellen oben klar bleibt, dass
-  // hier ein Freeform-Sensor-Element (nicht ein Listen-Sensor) gepatcht
-  // wird - technisch identisch zu _updateElement().
-  _updateEntity_forElement(index, patch) {
-    this._updateElement(index, patch);
+  // Liefert plausible Dropdown-Vorschläge für das "Zustand"-Kombifeld einer
+  // Farbregel: den aktuell live gemeldeten Wert (respektiert ein evtl.
+  // gesetztes "attribute"), dazu bei Hauptzustand die typischen Zustände
+  // der Entity-Domäne (COMMON_STATE_OPTIONS_BY_DOMAIN) bzw. bei einem
+  // Bool'schen Attributwert schlicht "true"/"false". Kein Anspruch auf
+  // Vollständigkeit - über "Eigener Wert ..." bleibt jeder Wert weiterhin
+  // frei eintippbar.
+  _stateOptionsFor(entityConfig) {
+    const stateObj = this._hass && this._hass.states ? this._hass.states[entityConfig.entity] : undefined;
+    const rawValue = getRawValue(entityConfig, stateObj);
+    const seen = new Set();
+    const options = [];
+    const push = (v, label) => {
+      if (v === undefined || v === null || v === "") return;
+      const key = String(v);
+      if (seen.has(key)) return;
+      seen.add(key);
+      options.push({ value: key, label: label || key });
+    };
+    if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
+      push(rawValue, `Aktueller Wert: ${rawValue}`);
+    }
+    if (!entityConfig.attribute) {
+      (COMMON_STATE_OPTIONS_BY_DOMAIN[domainOf(entityConfig.entity)] || []).forEach((s) => push(s));
+      push("unavailable");
+      push("unknown");
+    } else if (typeof rawValue === "boolean" || rawValue === undefined) {
+      push("true");
+      push("false");
+    }
+    return options;
   }
 
-  // --- Generischer Zustand->Farbe-Editor (Listen-Sensoren UND
-  //     Freeform-Sensor-Elemente) ------------------------------------------
+  // --- Generischer Wert->Farbe-Editor (Sensor-Elemente UND Zeilen
+  //     innerhalb von "list"-Elementen) ------------------------------------
   //
-  // key: eindeutiger String ("entity-<index>"/"element-<index>"), nur zur
-  //   Ablage des zugehörigen Zeilen-Containers in this._colorRuleContainers.
+  // key: eindeutiger String, nur zur Ablage des zugehörigen Zeilen-
+  //   Containers in this._colorRuleContainers.
   // getConf(): liefert das aktuelle { default_color, colors } tragende
-  //   Objekt (Entity- oder Element-Konfiguration).
+  //   Objekt (Sensor-Konfiguration).
   // patchConf(patch): mutiert genau dieses Objekt immutable und feuert
-  //   config-changed (this._updateEntity()/this._updateElement()) - reine
-  //   Werteänderung, siehe Modulkommentar oben.
-  // getCurrentStateValue(): liefert den aktuell live gemeldeten Rohzustand
-  //   des zugehörigen Sensors, oder undefined - für den "Aktuellen Zustand
-  //   übernehmen"-Knopf.
+  //   config-changed - reine Werteänderung, siehe Modulkommentar oben.
+  // getCurrentStateValue(): liefert den aktuell live gemeldeten Rohwert des
+  //   zugehörigen Sensors (respektiert "attribute"), oder undefined - für
+  //   den "Aktuellen Zustand übernehmen"-Knopf.
 
   _buildColorSection(key, getConf, patchConf, getCurrentStateValue) {
     const section = document.createElement("div");
@@ -1791,7 +2057,7 @@ class UiKarteCardEditor extends HTMLElement {
     useCurrentBtn.type = "button";
     useCurrentBtn.className = "mdk-btn";
     useCurrentBtn.innerHTML = `<ha-icon icon="mdi:target"></ha-icon><span>Aktuellen Zustand übernehmen</span>`;
-    useCurrentBtn.title = "Legt eine neue Zeile mit dem gerade live gemeldeten Rohzustand dieses Sensors an.";
+    useCurrentBtn.title = "Legt eine neue Zeile mit dem gerade live gemeldeten Rohwert dieses Sensors an.";
     useCurrentBtn.addEventListener("click", (ev) => {
       ev.preventDefault();
       const current = getCurrentStateValue();
@@ -1868,15 +2134,17 @@ class UiKarteCardEditor extends HTMLElement {
     const row = document.createElement("div");
     row.className = "mdk-color-rule-row";
 
-    const stateInput = document.createElement("input");
-    stateInput.type = "text";
-    stateInput.className = "mdk-input mdk-color-rule-state";
-    stateInput.placeholder = "Zustand, z.B. on";
-    stateInput.value = rule.state || "";
-    stateInput.addEventListener("input", () => {
-      this._updateColorRule(getConf, patchConf, ruleIndex, { state: stateInput.value });
+    const combo = buildCombobox({
+      options: this._stateOptionsFor(getConf()),
+      value: rule.state || "",
+      customLabel: "Eigener Wert …",
+      placeholder: "Zustand/Wert, z.B. on",
+      onChange: (value) => {
+        this._updateColorRule(getConf, patchConf, ruleIndex, { state: value });
+      },
     });
-    row.appendChild(stateInput);
+    combo.element.classList.add("mdk-color-rule-state");
+    row.appendChild(combo.element);
 
     const swatch = document.createElement("input");
     swatch.type = "color";
@@ -1936,50 +2204,15 @@ class UiKarteCardEditor extends HTMLElement {
 
   // --- Konfigurations-Mutationen ---------------------------------------
   //
-  // Alle _update*/_add*/_remove*-Methoden bauen this._config unveränderlich
-  // (immutable) neu zusammen (slice()/Spread statt In-Place-Mutation), damit
-  // Home Assistant zuverlässig erkennt, dass sich die Config geändert hat.
-  // Nur die strukturellen Varianten (_addEntity/_removeEntity/_moveEntity/
-  // _addElement/_removeElement/_moveElement) bauen anschließend auch das
-  // betroffene DOM-Stück neu auf - reine Werteänderungen (_updateEntity/
-  // _updateElement/_updateCanvas) tun das bewusst NICHT, siehe
+  // Alle _update*/_add*/_remove*/_move*-Methoden bauen this._config
+  // unveränderlich (immutable) neu zusammen (slice()/Spread statt
+  // In-Place-Mutation), damit Home Assistant zuverlässig erkennt, dass sich
+  // die Config geändert hat. Nur die strukturellen Varianten
+  // (_addElement/_removeElement/_moveElement/_addListEntity/
+  // _removeListEntity/_moveListEntity) bauen anschließend auch das
+  // betroffene DOM-Stück neu auf - reine Werteänderungen (_updateElement/
+  // _updateCanvas/_updateListEntity) tun das bewusst NICHT, siehe
   // Modulkommentar oben.
-
-  _updateEntity(index, patch) {
-    const entities = this._config.entities.slice();
-    entities[index] = { ...entities[index], ...patch };
-    this._config = { ...this._config, entities };
-    this._emitConfigChanged();
-  }
-
-  _addEntity(entityId) {
-    const newEntity = withEntityDefaults({ entity: entityId, colors: presetColorsForEntity(entityId) });
-    newEntity.__justAdded = true;
-    const entities = [...(this._config.entities || []), newEntity];
-    this._config = { ...this._config, entities };
-    if (this._newEntityPicker) this._newEntityPicker.value = "";
-    this._rebuildEntityRows();
-    this._emitConfigChanged();
-  }
-
-  _removeEntity(index) {
-    const entities = this._config.entities.slice();
-    entities.splice(index, 1);
-    this._config = { ...this._config, entities };
-    this._rebuildEntityRows();
-    this._emitConfigChanged();
-  }
-
-  _moveEntity(index, delta) {
-    const entities = this._config.entities.slice();
-    const newIndex = index + delta;
-    if (newIndex < 0 || newIndex >= entities.length) return;
-    const [item] = entities.splice(index, 1);
-    entities.splice(newIndex, 0, item);
-    this._config = { ...this._config, entities };
-    this._rebuildEntityRows();
-    this._emitConfigChanged();
-  }
 
   _updateCanvas(patch) {
     this._config = { ...this._config, canvas: { ...this._config.canvas, ...patch } };
@@ -1994,10 +2227,14 @@ class UiKarteCardEditor extends HTMLElement {
   }
 
   _addElement(type, entityId) {
-    const base =
-      type === "text"
-        ? { type: "text", x: 50, y: 50 }
-        : { type: "sensor", x: 50, y: 50, entity: entityId || "", colors: presetColorsForEntity(entityId || "") };
+    let base;
+    if (type === "text") {
+      base = { type: "text", x: 50, y: 50 };
+    } else if (type === "list") {
+      base = { type: "list", x: 50, y: 50, width: 60, dense: false, entities: [] };
+    } else {
+      base = { type: "sensor", x: 50, y: 50, entity: entityId || "", colors: presetColorsForEntity(entityId || "") };
+    }
     const newElement = withElementDefaults(base);
     newElement.__justAdded = true;
     const elements = [...(this._config.elements || []), newElement];
@@ -2028,6 +2265,57 @@ class UiKarteCardEditor extends HTMLElement {
     this._rebuildElementRows();
     this._emitConfigChanged();
   }
+
+  // --- "list"-Element: verschachtelte Sensoren-CRUD -----------------------
+
+  _updateListEntity(elementIndex, entityIndex, patch) {
+    const elements = this._config.elements.slice();
+    const el = elements[elementIndex];
+    const entities = (el.entities || []).slice();
+    entities[entityIndex] = { ...entities[entityIndex], ...patch };
+    elements[elementIndex] = { ...el, entities };
+    this._config = { ...this._config, elements };
+    this._emitConfigChanged();
+  }
+
+  _addListEntity(elementIndex, entityId) {
+    const elements = this._config.elements.slice();
+    const el = elements[elementIndex];
+    const newEntity = withEntityItemDefaults({ entity: entityId, colors: presetColorsForEntity(entityId) });
+    newEntity.__justAdded = true;
+    const entities = [...(el.entities || []), newEntity];
+    elements[elementIndex] = { ...el, entities };
+    this._config = { ...this._config, elements };
+    this._rebuildListEntityRows(elementIndex);
+    this._syncMarkerLabel(elementIndex, this._elementMarkerLabel(elements[elementIndex]));
+    this._emitConfigChanged();
+  }
+
+  _removeListEntity(elementIndex, entityIndex) {
+    const elements = this._config.elements.slice();
+    const el = elements[elementIndex];
+    const entities = (el.entities || []).slice();
+    entities.splice(entityIndex, 1);
+    elements[elementIndex] = { ...el, entities };
+    this._config = { ...this._config, elements };
+    this._rebuildListEntityRows(elementIndex);
+    this._syncMarkerLabel(elementIndex, this._elementMarkerLabel(elements[elementIndex]));
+    this._emitConfigChanged();
+  }
+
+  _moveListEntity(elementIndex, entityIndex, delta) {
+    const elements = this._config.elements.slice();
+    const el = elements[elementIndex];
+    const entities = (el.entities || []).slice();
+    const newIndex = entityIndex + delta;
+    if (newIndex < 0 || newIndex >= entities.length) return;
+    const [item] = entities.splice(entityIndex, 1);
+    entities.splice(newIndex, 0, item);
+    elements[elementIndex] = { ...el, entities };
+    this._config = { ...this._config, elements };
+    this._rebuildListEntityRows(elementIndex);
+    this._emitConfigChanged();
+  }
 }
 
 customElements.define("ui-karte", UiKarteCard);
@@ -2038,5 +2326,5 @@ window.customCards.push({
   type: "ui-karte",
   name: "UI Karte",
   description:
-    "Frei zusammenstellbare Sensorliste ODER frei per Maus positionierbares Canvas-Layout, inkl. grafischem Editor mit zustandsabhängiger Icon-Farbe je Sensor.",
+    "Frei per Maus positionierbares Canvas-Layout (Text, Sensoren, Sensor-Listen) mit grafischem Editor, zustandsabhängiger Icon-Farbe und per Dropdown wählbaren Zuständen/Attributen je Sensor.",
 });
