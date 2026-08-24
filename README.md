@@ -1,5 +1,7 @@
 # UI Karte
 
+Repository: https://github.com/Meine-smarte-Welt/ui-karte
+
 Eine frei konfigurierbare Home-Assistant-Lovelace-Karte: ein Canvas fester
 Höhe, auf dem sich beliebig viele Elemente direkt mit der Maus (oder dem
 Finger) frei positionieren lassen. Es gibt drei Elementtypen:
@@ -12,20 +14,32 @@ Finger) frei positionieren lassen. Es gibt drei Elementtypen:
   unten).
 
 Bei Sensor- und Listen-Elementen wird das Icon jedes Sensors abhängig von
-dessen Zustand eingefärbt, genau wie bei der `fritzbox-anrufe-card` (dort
-sind es die Anruf-/Kategorie-Symbole, hier ist es pro Sensor frei
-editierbar). Dabei lässt sich pro Sensor wählen, ob der **Hauptzustand**
-oder ein beliebiges **Attribut** (z. B. `battery_level`) angezeigt und für
-die Farbzuordnung herangezogen wird - beides per Dropdown auswählbar.
+dessen Wert eingefärbt, genau wie bei der `fritzbox-anrufe-card` (dort sind
+es die Anruf-/Kategorie-Symbole, hier ist es pro Sensor frei editierbar).
+
+**Zustand, Attribute oder beides:** Pro Sensor lässt sich per Dropdown
+festlegen, was vorrangig angezeigt und für die Icon-Farbe herangezogen
+wird - standardmäßig der **Hauptzustand**, alternativ ein beliebiges
+**Attribut** (z. B. `battery_level`). Zusätzlich lässt sich darunter eine
+beliebig lange Liste **weiterer Attributwerte** einblenden, rein zur
+Anzeige (ohne Einfluss auf die Farbzuordnung) - je Eintrag entweder ein
+einzelnes, konkret gewähltes Attribut oder **alle** vom Sensor gemeldeten
+Attribute auf einmal (technische/interne Werte wie `friendly_name` oder
+`icon` werden dabei automatisch herausgefiltert). Jede Dropdown-Option
+zeigt dabei direkt den aktuell live gemeldeten Wert als Vorschau an (z. B.
+"battery_level: 42"), sodass man nicht raten muss, was ein Attribut gerade
+enthält.
 
 Kompletter grafischer Editor - keine YAML-Kenntnisse nötig:
 
 - Text-, Sensor- und Listen-Elemente über Buttons bzw. Entity-Picker
   hinzufügen, entfernen, umsortieren und frei auf der Canvas platzieren.
-- Bei jedem Sensor per Dropdown wählbar, ob Zustand oder ein Attribut
-  angezeigt/abgeglichen werden soll - die Liste der Attribute wird direkt
-  aus dem aktuell gemeldeten Zustand der gewählten Entity befüllt, ein
-  Attributname lässt sich aber auch frei eintippen ("Anderes Attribut ...").
+- Bei jedem Sensor per Dropdown wählbar, ob der Zustand oder ein Attribut
+  vorrangig angezeigt/abgeglichen wird - jede Dropdown-Option zeigt den
+  aktuell gemeldeten Wert als Vorschau, ein Attributname lässt sich auch
+  frei eintippen ("Anderes Attribut ..."). Darunter lassen sich beliebig
+  viele zusätzliche Attribut-Zeilen hinzufügen, je Zeile wählbar zwischen
+  "Alle Attribute" oder einem einzelnen Attribut.
 - Für jeden Sensor eine eigene, aufklappbare Zustand-\>Farbe-Zuordnung:
   der abzugleichende Wert wird ebenfalls per Dropdown aus plausiblen
   Vorschlägen (aktuell gemeldeter Wert, typische Zustände der
@@ -35,6 +49,9 @@ Kompletter grafischer Editor - keine YAML-Kenntnisse nötig:
   (`rgb()`/`hsl()`/`var(--...)`).
 - "Aktuellen Zustand übernehmen"-Knopf legt aus dem gerade live gemeldeten
   Rohwert direkt eine neue Farbregel an.
+- Ein **Raster-Button** oberhalb der Positionier-Fläche blendet ein
+  Ausrichtungsraster ein/aus; bei aktiviertem Raster rastet die Position
+  beim Ziehen eines Markers automatisch auf gleichmäßige Schritte ein.
 - Da Home Assistant beim Bearbeiten einer Karte automatisch eine Live-
   Vorschau über dem Editor anzeigt, wirkt sich jede Änderung sofort sichtbar
   aus (WYSIWYG) - das übernimmt Home Assistants Editor-Dialog selbst, ohne
@@ -87,7 +104,9 @@ elements:
   - type: sensor
     entity: binary_sensor.haustuer
     name: "Haustür"
-    attribute: ""
+    attribute: ""                # leer = Hauptzustand, sonst z.B. "battery_level"
+    extra_attributes:            # zusätzlich unter dem Zustand angezeigt
+      - attribute: "battery_level"
     x: 25
     y: 40
     colors:
@@ -120,22 +139,31 @@ elements:
 
 1. **Canvas-Einstellungen**: Höhe in Pixeln, optionale Hintergrundfarbe,
    optionale Hintergrundbild-URL (z. B. ein Grundriss unter `/local/...`).
-2. Eine **Positionier-Fläche** in genau dieser Höhe: unten "Text
-   hinzufügen", "Liste hinzufügen" oder über den Entity-Picker einen
-   Sensor hinzufügen - das neue Element erscheint als kleiner, mit der Maus
-   greifbarer Marker in der Mitte der Fläche. Marker anklicken, halten und
-   an die gewünschte Stelle ziehen (auch touch-fähig) - die Position wird
-   laufend gespeichert, und die von Home Assistant über dem Editor
-   angezeigte echte Kartenvorschau bewegt sich dabei live mit.
-3. Eine **Elementeliste** darunter mit einem aufklappbaren Eintrag je
+2. Ein **Raster-Button** direkt über der Positionier-Fläche blendet ein
+   Ausrichtungsraster ein/aus. Bei aktiviertem Raster rastet die Position
+   beim Ziehen eines Markers automatisch auf ein gleichmäßiges Raster ein -
+   praktisch, um mehrere Elemente exakt fluchtend anzuordnen. Die
+   X/Y-Zahlenfelder je Element (siehe Punkt 4) sind davon unabhängig und
+   erlauben weiterhin jeden beliebigen Wert.
+3. Eine **Positionier-Fläche** in genau der konfigurierten Canvas-Höhe:
+   unten "Text hinzufügen", "Liste hinzufügen" oder über den Entity-Picker
+   einen Sensor hinzufügen - das neue Element erscheint als kleiner, mit
+   der Maus greifbarer Marker in der Mitte der Fläche. Marker anklicken,
+   halten und an die gewünschte Stelle ziehen (auch touch-fähig) - die
+   Position wird laufend gespeichert, und die von Home Assistant über dem
+   Editor angezeigte echte Kartenvorschau bewegt sich dabei live mit.
+4. Eine **Elementeliste** darunter mit einem aufklappbaren Eintrag je
    Element: X/Y-Position auch als Zahl eingebbar (für pixelgenaues
    Justieren ohne Maus), dazu je nach Typ:
    - **Text**: Textinhalt, Schriftgröße, Ausrichtung, Farbe, Fett.
-   - **Sensor**: Entity, Anzeigename, Icon, Zustand/Attribut-Dropdown sowie
-     Zustand-\>Farbe-Zuordnung.
+   - **Sensor**: Entity, Anzeigename, Icon, ein Dropdown für den
+     vorrangigen Wert (Zustand oder ein Attribut, mit Live-Wert-Vorschau je
+     Option), eine Liste zusätzlicher Attribut-Zeilen (einzelnes Attribut
+     oder "Alle Attribute") sowie die Zustand-\>Farbe-Zuordnung.
    - **Liste**: Breite (%), kompakte Zeilen ein/aus, dazu eine eigene,
      verschachtelte Sensoren-Liste (jeder Eintrag mit denselben Feldern wie
-     ein einzelnes Sensor-Element).
+     ein einzelnes Sensor-Element, inklusive Attribut-Dropdown und
+     zusätzlichen Attribut-Zeilen).
    - Pfeil-Buttons ändern die Vordergrund-/Hintergrund-Reihenfolge
      (überlappende Elemente), der Papierkorb-Button entfernt das Element.
 
@@ -168,7 +196,8 @@ Je Eintrag in `elements`, gemeinsame Felder:
 Zusätzlich bei `type: sensor`: `entity`, `name` (Anzeigename, leer =
 `friendly_name`), `icon` (leer = Icon der Entity bzw. ein
 Domänen-Standardicon), `attribute` (leer = Hauptzustand, sonst ein
-Attributname), `default_color`, `colors` (siehe unten).
+Attributname - bestimmt Anzeige UND Farbabgleich), `extra_attributes`
+(siehe unten), `default_color`, `colors` (siehe unten).
 
 Zusätzlich bei `type: text`: `text` (Inhalt), `font_size` (Pixel, Standard
 `16`), `color` (leer = Theme-Standard), `bold` (`true`/`false`), `align`
@@ -177,9 +206,20 @@ Zusätzlich bei `type: text`: `text` (Inhalt), `font_size` (Pixel, Standard
 Zusätzlich bei `type: list`: `width` (Prozent der Canvas-Breite, Standard
 `60`), `dense` (kompaktere Zeilenhöhe, Standard `false`), `entities` (Liste
 von Sensoren, je Eintrag identisch zu den `sensor`-Feldern `entity`/
-`name`/`icon`/`attribute`/`default_color`/`colors` oben - ohne eigenes
-`x`/`y`, da die Position über das umschließende `list`-Element bestimmt
-wird).
+`name`/`icon`/`attribute`/`extra_attributes`/`default_color`/`colors` oben
+- ohne eigenes `x`/`y`, da die Position über das umschließende
+`list`-Element bestimmt wird).
+
+`extra_attributes` (je Sensor, optional): eine Liste weiterer Werte, die
+zusätzlich unter dem vorrangigen Wert (`attribute` oben) angezeigt werden
+- rein informativ, ohne Einfluss auf `colors`. Je Eintrag ein Objekt
+`{ attribute: "..." }`: entweder ein konkreter Attributname, oder der
+Sentinel-Wert `"__all__"` (im Editor als Option "Alle Attribute"
+dargestellt) für alle vom Sensor gemeldeten Attribute auf einmal, außer
+einer festen Liste technischer/interner Attribute (`friendly_name`,
+`icon`, `entity_picture`, `unit_of_measurement`, `device_class`,
+`state_class`, `supported_features`, `assumed_state`, `attribution`,
+`editable`, `id`, `restored`), die dabei automatisch ausgeblendet werden.
 
 **Wie die Wert-\>Farbe-Zuordnung funktioniert:** Der Rohwert eines Sensors
 (Hauptzustand `state.state`, oder bei gesetztem `attribute` der Wert
@@ -189,7 +229,9 @@ verglichen - die erste Übereinstimmung gewinnt. Trifft keine zu, greift
 `default_color`, sonst bleibt das Icon in der vom aktuellen
 Home-Assistant-Theme vorgegebenen Standardfarbe. Es handelt sich bewusst um
 eine einfache, exakte Zuordnung - keine Zahlen-Schwellenwerte (z. B. "Akku
-< 20 %") oder Vorlagen/Templates.
+< 20 %") oder Vorlagen/Templates. `extra_attributes` fließt dabei nie mit
+ein - für den Farbabgleich zählt ausschließlich der eine, vorrangige Wert
+(`attribute`, oder eben der Hauptzustand).
 
 Für gängige Domänen (`binary_sensor`, `switch`, `input_boolean`, `light`,
 `lock`, `cover`) legt der Editor beim Hinzufügen eines Sensors automatisch
@@ -220,12 +262,22 @@ irgendetwas geändert wird, wird die neue Struktur dauerhaft gespeichert.
   sich `<ha-entity-picker>` oder `<ha-form>` in einer bestimmten
   Home-Assistant-Frontend-Version anders verhalten als erwartet, bitte
   melden.
-- Die Attribut-Dropdown-Liste wird beim Öffnen/Aufbauen des jeweiligen
-  Editor-Abschnitts aus den zu diesem Zeitpunkt gemeldeten Attributen der
-  gewählten Entity befüllt - meldet eine Entity erst später ein neues
-  Attribut, taucht es im Dropdown nicht automatisch nach, sondern erst nach
-  einem erneuten Öffnen des Editors. Ein Attributname lässt sich in der
+- Die Attribut-Dropdown-Liste (inkl. Live-Wert-Vorschau je Option) wird
+  beim Öffnen/Aufbauen des jeweiligen Editor-Abschnitts aus den zu diesem
+  Zeitpunkt gemeldeten Attributen der gewählten Entity befüllt - meldet
+  eine Entity erst später ein neues Attribut, taucht es im Dropdown nicht
+  automatisch nach, sondern erst nach einem erneuten Öffnen des Editors
+  bzw. erneutem Auswählen der Entity. Ein Attributname lässt sich in der
   Zwischenzeit jederzeit über "Anderes Attribut ..." frei eintippen.
+- Die Liste der bei "Alle Attribute" automatisch ausgeblendeten
+  technischen/internen Attribute (siehe `extra_attributes` oben) ist fest
+  im Code hinterlegt und nicht über den Editor anpassbar - ein einzelnes,
+  eigentlich gefiltertes Attribut lässt sich aber jederzeit gezielt über
+  eine eigene "ein Attribut"-Zeile anzeigen.
+- Das Ausrichtungsraster ist ein reines Editor-Hilfsmittel (Ein/Aus-Status
+  wird nicht in der Kartenkonfiguration gespeichert, sondern gilt nur für
+  die aktuell geöffnete Editor-Sitzung) mit fester Rasterweite - keine
+  einstellbare Schrittweite.
 - Ein Klick auf eine Sensorzeile bzw. ein Sensor-Element öffnet den
   Standard-"Mehr Informationen"-Dialog der jeweiligen Entity; ein eigenes,
   konfigurierbares Klickverhalten (`tap_action` u. ä.) gibt es (noch) nicht.

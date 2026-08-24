@@ -21,11 +21,25 @@
  * Editor definierbar - siehe "colors" im Konfigurationsschema unten.
  *
  * Angezeigter/abgeglichener Wert (per Sensor, "attribute"): standardmäßig
- * leer, dann zählt der Hauptzustand (state.state). Wird stattdessen ein
- * Attributname hinterlegt (im Editor per Dropdown aus den aktuell
- * gemeldeten Attributen des gewählten Sensors auswählbar, oder frei
- * eintippbar), wird stattdessen state.attributes[attribute] anzeigt UND
- * für den Farbabgleich herangezogen.
+ * leer, dann zählt (vorrangig) der Hauptzustand (state.state). Wird
+ * stattdessen ein Attributname hinterlegt (im Editor per Dropdown aus den
+ * aktuell gemeldeten Attributen des gewählten Sensors auswählbar, jede
+ * Option mit Live-Wert-Vorschau, oder frei eintippbar), wird stattdessen
+ * state.attributes[attribute] angezeigt UND für den Farbabgleich (siehe
+ * "colors" unten) herangezogen. Dieser eine Wert bleibt immer maßgeblich
+ * für Icon-Farbe und Vorrang-Anzeige.
+ *
+ * Zusätzliche Attribute unter dem Zustand (per Sensor, "extra_attributes"):
+ * eine Liste aus { attribute }-Einträgen, rein zur zusätzlichen Anzeige
+ * (fließen NICHT in den Farbabgleich ein). Jeder Eintrag zeigt entweder ein
+ * einzelnes Attribut (Wert per Live-Vorschau im Editor-Dropdown wählbar)
+ * oder, bei attribute: "__all__" (Sentinel-Konstante ALL_ATTRIBUTES_VALUE,
+ * im Editor als Option "Alle Attribute"), automatisch ALLE Attribute der
+ * Entity außer einer festen Liste bekannter technischer/interner Attribute
+ * (friendly_name, icon, unit_of_measurement, supported_features, ...) -
+ * siehe NOISY_ATTRIBUTE_KEYS/filteredAttributeKeys(). So lässt sich pro
+ * Zeile explizit festlegen, ob genau ein Wert oder alle (gefilterten)
+ * Werte angezeigt werden sollen.
  *
  * Grafischer, WYSIWYG-artiger Editor (getConfigElement):
  * - Allgemeine Darstellungsoptionen (Titel, Icon/Zustand/Einheit ein-/
@@ -47,6 +61,12 @@
  *   <input type="color">, wie im Farben-Bereich der fritzbox-anrufe-card).
  *   Ein "Aktuellen Zustand übernehmen"-Knopf legt aus dem gerade live
  *   gemeldeten Wert direkt eine neue Zeile an.
+ * - Über einen "Raster"-Button oberhalb der Positionier-Fläche lässt sich
+ *   ein optisches Ausrichtungsraster ein-/ausblenden (this._gridEnabled,
+ *   rein editor-lokal, kein Bestandteil der gespeicherten Konfiguration);
+ *   bei aktiviertem Raster rastet die Position beim Ziehen eines Markers
+ *   auf ein Vielfaches von GRID_STEP_PERCENT (5 %) ein - siehe
+ *   _attachDrag()/_syncGridOverlay().
  * - Weil Home Assistant beim Bearbeiten einer Karte automatisch eine Live-
  *   Vorschau der Karte selbst über dem Editor anzeigt, wirkt sich jede
  *   Änderung hier sofort sichtbar aus - das ist der WYSIWYG-Effekt, den
@@ -89,6 +109,9 @@
  *     - type: sensor
  *       entity: sensor.aussentemperatur
  *       attribute: ""           # leer = Hauptzustand, sonst z.B. "battery_level"
+ *       extra_attributes:       # zusätzlich unter dem Zustand angezeigt
+ *         - attribute: "__all__" # Sentinel = alle (gefilterten) Attribute
+ *         - attribute: "battery_level" # oder ein einzelnes Attribut
  *       x: 30                  # Prozent, Mittelpunkt des Elements
  *       y: 50
  *       colors: []
@@ -288,16 +311,91 @@ function formatDisplayValue(rawValue, attribute, stateObj, showUnit) {
     const unit = showUnit && stateObj && stateObj.attributes ? stateObj.attributes.unit_of_measurement : "";
     return unit ? `${rawValue} ${unit}` : String(rawValue);
   }
-  if (typeof rawValue === "boolean") return rawValue ? "Ja" : "Nein";
-  if (Array.isArray(rawValue)) return rawValue.join(", ");
-  if (typeof rawValue === "object") {
+  return formatAttributeValue(rawValue);
+}
+
+// Formatiert einen beliebigen Attributwert (nicht den Hauptzustand) robust
+// als Text - eigene Funktion statt nur ein Zweig von formatDisplayValue(),
+// weil dieselbe Formatierung auch für die Live-Wert-Vorschau in den
+// Editor-Dropdowns (siehe buildAttributeOptions()) und für die
+// "zusätzliche Attribute"-Zeilen (siehe renderExtraAttributeLines())
+// gebraucht wird.
+function formatAttributeValue(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "boolean") return value ? "Ja" : "Nein";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "object") {
     try {
-      return JSON.stringify(rawValue);
+      return JSON.stringify(value);
     } catch (e) {
-      return String(rawValue);
+      return String(value);
     }
   }
-  return String(rawValue);
+  return String(value);
+}
+
+// Sentinel-Wert für "extra_attributes"-Zeilen (siehe ENTITY_ITEM_DEFAULTS):
+// bedeutet "alle (gefilterten) Attribute anzeigen" statt eines einzelnen
+// Attributnamens. Bewusst kein leerer String, weil "" beim
+// Haupt-Attributfeld ("attribute") bereits "Hauptzustand" bedeutet - beide
+// Felder sollen unabhängig voneinander eindeutig bleiben.
+const ALL_ATTRIBUTES_VALUE = "__all__";
+
+// Technische/interne Attribute, die beim Anzeigen "aller Attribute" (siehe
+// oben) automatisch ausgeblendet werden, damit die Liste lesbar bleibt -
+// diese Werte sind fast nie das, was man auf einem Dashboard sehen will.
+// Ein einzelnes Attribut lässt sich trotzdem gezielt auswählen/anzeigen,
+// auch wenn es hier steht (die Filterung gilt nur für den "Alle
+// Attribute"-Modus).
+const NOISY_ATTRIBUTE_KEYS = new Set([
+  "friendly_name",
+  "icon",
+  "entity_picture",
+  "supported_features",
+  "assumed_state",
+  "attribution",
+  "editable",
+  "id",
+  "restored",
+  "device_class",
+  "state_class",
+  "unit_of_measurement",
+]);
+
+function filteredAttributeKeys(stateObj) {
+  if (!stateObj || !stateObj.attributes) return [];
+  return Object.keys(stateObj.attributes).filter((key) => !NOISY_ATTRIBUTE_KEYS.has(key));
+}
+
+// Rendert die optionale "zusätzliche Attribute unter dem Zustand"-Liste
+// eines Sensors (siehe entityConfig.extra_attributes) als HTML-Zeilen.
+// Jede Zeile ist entweder ein einzelnes Attribut oder (bei
+// ALL_ATTRIBUTES_VALUE) alle gefilterten Attribute auf einmal - beide
+// Fälle münden am Ende in dieselbe Zeilen-Darstellung. cssPrefix
+// unterscheidet die CSS-Klassen zwischen Listen-Zeile ("mdk-row") und
+// freistehendem Sensor-Element ("mdk-element").
+function renderExtraAttributeLines(entityConfig, stateObj, cssPrefix) {
+  const rows = (entityConfig && entityConfig.extra_attributes) || [];
+  if (!rows.length || !stateObj) return "";
+  const lines = [];
+  const pushLine = (key, value) => {
+    if (value === undefined || value === null || value === "") return;
+    lines.push({ key, value: formatAttributeValue(value) });
+  };
+  rows.forEach((row) => {
+    if (!row || !row.attribute || row.attribute === ALL_ATTRIBUTES_VALUE) {
+      filteredAttributeKeys(stateObj).forEach((key) => pushLine(key, stateObj.attributes[key]));
+    } else {
+      pushLine(row.attribute, stateObj.attributes ? stateObj.attributes[row.attribute] : undefined);
+    }
+  });
+  if (!lines.length) return "";
+  return `<div class="${cssPrefix}-extra">${lines
+    .map(
+      (l) =>
+        `<div class="${cssPrefix}-extra-item"><span class="${cssPrefix}-extra-key">${escapeHtml(l.key)}</span><span class="${cssPrefix}-extra-value">${escapeHtml(l.value)}</span></div>`
+    )
+    .join("")}</div>`;
 }
 
 // --- Konfigurations-Defaults --------------------------------------------
@@ -319,6 +417,7 @@ const ENTITY_ITEM_DEFAULTS = {
   name: "",
   icon: "",
   attribute: "",
+  extra_attributes: [],
   default_color: "",
   colors: [],
 };
@@ -326,6 +425,9 @@ const ENTITY_ITEM_DEFAULTS = {
 function withEntityItemDefaults(entityConfig) {
   const merged = { ...ENTITY_ITEM_DEFAULTS, ...(entityConfig || {}) };
   merged.attribute = String(merged.attribute || "");
+  merged.extra_attributes = Array.isArray(merged.extra_attributes)
+    ? merged.extra_attributes.map((row) => ({ attribute: String((row && row.attribute) || ALL_ATTRIBUTES_VALUE) }))
+    : [];
   merged.colors = Array.isArray(merged.colors)
     ? merged.colors.map((rule) => ({ state: String((rule && rule.state) || ""), color: String((rule && rule.color) || "") }))
     : [];
@@ -346,10 +448,6 @@ function withCanvasDefaults(canvasConfig) {
 // transform: translate(-50%, -50%) in CARD_STYLES) - das entspricht
 // intuitiv dem Punkt, an dem man beim Ziehen mit der Maus "zupackt".
 const ELEMENT_BASE_DEFAULTS = { type: "sensor", x: 50, y: 50 };
-
-// Ein eigenständiges Sensor-Element hat exakt dieselbe Form wie ein
-// Sensor-Eintrag innerhalb eines "list"-Elements.
-const SENSOR_ELEMENT_DEFAULTS = ENTITY_ITEM_DEFAULTS;
 
 const TEXT_ELEMENT_DEFAULTS = {
   text: "Text",
@@ -387,13 +485,11 @@ function withElementDefaults(elementConfig) {
     return merged;
   }
 
-  // sensor
-  const merged = { ...SENSOR_ELEMENT_DEFAULTS, ...base };
-  merged.attribute = String(merged.attribute || "");
-  merged.colors = Array.isArray(merged.colors)
-    ? merged.colors.map((rule) => ({ state: String((rule && rule.state) || ""), color: String((rule && rule.color) || "") }))
-    : [];
-  return merged;
+  // sensor - hat exakt dieselbe Form wie ein Sensor-Eintrag innerhalb eines
+  // "list"-Elements, daher direkte Wiederverwendung von
+  // withEntityItemDefaults() (base enthält zusätzlich type/x/y, die
+  // ENTITY_ITEM_DEFAULTS nicht kennt und deshalb unangetastet lässt).
+  return withEntityItemDefaults(base);
 }
 
 function withCardDefaults(config) {
@@ -467,13 +563,14 @@ const CARD_STYLES = `
   }
   .mdk-row {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 2px;
     padding: 12px 16px;
     cursor: pointer;
   }
-  .mdk-row.dense { padding: 6px 16px; }
+  .mdk-row.dense { padding: 6px 16px; gap: 1px; }
   .mdk-row:hover { background: var(--secondary-background-color, rgba(0, 0, 0, 0.04)); }
+  .mdk-row-top { display: flex; align-items: center; gap: 12px; }
   .mdk-row-icon {
     flex: 0 0 auto;
     color: var(--mdk-row-icon-color, var(--state-icon-color, #44739e));
@@ -496,6 +593,19 @@ const CARD_STYLES = `
     font-weight: 500;
     text-align: right;
   }
+  /* Zusätzliche Attribute unter dem Zustand (entityConfig.extra_attributes,
+     siehe renderExtraAttributeLines()) - eingerückt unter den Namen. */
+  .mdk-row-extra { display: flex; flex-direction: column; gap: 1px; padding-left: 36px; }
+  .mdk-row-extra-item {
+    display: flex;
+    gap: 4px;
+    font-size: 0.75em;
+    color: var(--secondary-text-color, #727272);
+    overflow: hidden;
+  }
+  .mdk-row-extra-key { font-weight: 500; flex: 0 0 auto; }
+  .mdk-row-extra-key::after { content: ":"; }
+  .mdk-row-extra-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Canvas: absolut positionierte Elemente auf einer Fläche fester Höhe -
      siehe _renderFreeformCanvas()/_renderFreeformElement(). x/y sind
@@ -546,6 +656,12 @@ const CARD_STYLES = `
     word-break: break-word;
     color: var(--primary-text-color, #212121);
   }
+  /* Zusätzliche Attribute unter dem Zustand, siehe .mdk-row-extra oben -
+     hier zentriert statt eingerückt, passend zum zentrierten Element-Stil. */
+  .mdk-element-extra { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-top: 1px; }
+  .mdk-element-extra-item { display: flex; gap: 3px; font-size: 0.72em; color: var(--secondary-text-color, #727272); }
+  .mdk-element-extra-key { font-weight: 500; }
+  .mdk-element-extra-key::after { content: ":"; }
 
   /* "list"-Element: eine Gruppe von Sensor-Zeilen, selbst frei auf der
      Canvas positionierbar - anders als die übrigen Elementtypen linksbündig
@@ -634,10 +750,12 @@ class UiKarteCard extends HTMLElement {
     if (!stateObj) {
       return `
         <div class="mdk-row ${dense ? "dense" : ""}" data-entity="${escapeHtml(entityConfig.entity)}">
-          ${this._config.show_icon ? `<ha-icon class="mdk-row-icon unavailable" icon="mdi:help-circle-outline"></ha-icon>` : ""}
-          <div class="mdk-row-main">
-            <span class="mdk-row-name">${escapeHtml(name)}</span>
-            <span class="mdk-row-sub">Entity nicht gefunden</span>
+          <div class="mdk-row-top">
+            ${this._config.show_icon ? `<ha-icon class="mdk-row-icon unavailable" icon="mdi:help-circle-outline"></ha-icon>` : ""}
+            <div class="mdk-row-main">
+              <span class="mdk-row-name">${escapeHtml(name)}</span>
+              <span class="mdk-row-sub">Entity nicht gefunden</span>
+            </div>
           </div>
         </div>
       `;
@@ -648,14 +766,18 @@ class UiKarteCard extends HTMLElement {
     const icon = entityConfig.icon || defaultIconForEntity(entityConfig.entity, stateObj);
     const iconStyle = color ? ` style="color: ${escapeHtml(color)};"` : "";
     const stateText = this._config.show_state ? formatDisplayValue(rawValue, entityConfig.attribute, stateObj, this._config.show_unit) : "";
+    const extraHtml = renderExtraAttributeLines(entityConfig, stateObj, "mdk-row");
 
     return `
       <div class="mdk-row ${dense ? "dense" : ""}" data-entity="${escapeHtml(entityConfig.entity)}">
-        ${this._config.show_icon ? `<ha-icon class="mdk-row-icon" icon="${escapeHtml(icon)}"${iconStyle}></ha-icon>` : ""}
-        <div class="mdk-row-main">
-          <span class="mdk-row-name">${escapeHtml(name)}</span>
+        <div class="mdk-row-top">
+          ${this._config.show_icon ? `<ha-icon class="mdk-row-icon" icon="${escapeHtml(icon)}"${iconStyle}></ha-icon>` : ""}
+          <div class="mdk-row-main">
+            <span class="mdk-row-name">${escapeHtml(name)}</span>
+          </div>
+          ${stateText ? `<div class="mdk-row-state">${escapeHtml(stateText)}</div>` : ""}
         </div>
-        ${stateText ? `<div class="mdk-row-state">${escapeHtml(stateText)}</div>` : ""}
+        ${extraHtml}
       </div>
     `;
   }
@@ -735,12 +857,14 @@ class UiKarteCard extends HTMLElement {
     const icon = elementConfig.icon || defaultIconForEntity(elementConfig.entity, stateObj);
     const iconStyle = color ? ` style="color: ${escapeHtml(color)};"` : "";
     const stateText = this._config.show_state ? formatDisplayValue(rawValue, elementConfig.attribute, stateObj, this._config.show_unit) : "";
+    const extraHtml = renderExtraAttributeLines(elementConfig, stateObj, "mdk-element");
 
     return `
       <div class="mdk-element clickable" style="${posStyle}"${dataEntityAttr}>
         ${this._config.show_icon ? `<ha-icon class="mdk-element-icon" icon="${escapeHtml(icon)}"${iconStyle}></ha-icon>` : ""}
         <span class="mdk-element-name">${escapeHtml(name)}</span>
         ${stateText ? `<span class="mdk-element-state">${escapeHtml(stateText)}</span>` : ""}
+        ${extraHtml}
       </div>
     `;
   }
@@ -932,9 +1056,18 @@ function buildCombobox({ options, value, customLabel, placeholder, onChange }) {
     customOpt.textContent = customLabel || "Eigener Wert …";
     select.appendChild(customOpt);
 
-    const matches = currentOptions.some((o) => o.value === String(currentValue || ""));
-    if (matches && currentValue !== "" && currentValue !== undefined) {
-      select.value = String(currentValue);
+    // Wichtig: "" ist bei manchen Optionslisten (z.B. dem
+    // Attribut-Dropdown, wo "" "Hauptzustand" bedeutet) ein völlig
+    // legitimer Options-Wert - matches() darf ihn deshalb NICHT pauschal
+    // ausschließen, sonst würde "Hauptzustand" nie als ausgewählt
+    // dargestellt, sondern immer ins Freitext-Feld ausweichen. Bei
+    // Optionslisten, in denen "" gar nicht vorkommt (z.B. Farbregeln),
+    // bleibt das Verhalten unverändert, weil dort matches() für "" ohnehin
+    // false ergibt.
+    const normalizedValue = currentValue === undefined || currentValue === null ? "" : currentValue;
+    const matches = currentOptions.some((o) => o.value === String(normalizedValue));
+    if (matches) {
+      select.value = String(normalizedValue);
       customInput.style.display = "none";
     } else {
       select.value = CUSTOM_VALUE;
@@ -970,6 +1103,40 @@ function buildCombobox({ options, value, customLabel, placeholder, onChange }) {
     },
   };
 }
+
+// Baut die Optionsliste für ein Attribut-Dropdown (Haupt-Attributauswahl
+// UND "zusätzliche Attribute"-Zeilen, siehe _buildEntityFields()) inkl.
+// Echtwert-Vorschau direkt in der Options-Beschriftung (z.B.
+// "battery_level: 42"), wie von Thorsten gewünscht. includeStateOption
+// fügt vorne eine "Zustand (state)"-Option ein (nur bei der
+// Haupt-Attributauswahl sinnvoll), includeAllOption fügt eine "Alle
+// Attribute"-Option ein (nur bei den "zusätzliche Attribute"-Zeilen
+// sinnvoll, wo explizit zwischen "alle" und "ein einzelner Wert"
+// unterschieden werden soll).
+function buildAttributeOptions(stateObj, { includeStateOption = false, includeAllOption = false } = {}) {
+  const options = [];
+  if (includeStateOption) {
+    const stateLabel = stateObj ? `Zustand (state): ${formatDisplayValue(stateObj.state, "", stateObj, true)}` : "Zustand (state)";
+    options.push({ value: "", label: stateLabel });
+  }
+  if (includeAllOption) {
+    options.push({ value: ALL_ATTRIBUTES_VALUE, label: "Alle Attribute (gefiltert, ohne technische Werte)" });
+  }
+  if (stateObj && stateObj.attributes) {
+    filteredAttributeKeys(stateObj).forEach((key) => {
+      options.push({ value: key, label: `${key}: ${formatAttributeValue(stateObj.attributes[key])}` });
+    });
+  }
+  return options;
+}
+
+// Raster-Schrittweite in Prozent (x/y werden ohnehin als Prozentwerte
+// gespeichert, siehe ELEMENT_BASE_DEFAULTS) - beim Ziehen eines Markers
+// bei aktiviertem Raster (siehe _attachDrag()/this._gridEnabled) wird auf
+// ein Vielfaches dieses Werts gerundet. Bewusst ein fester, nicht
+// konfigurierbarer Wert, der bei 100 % gleichmäßig aufgeht (20 Linien je
+// Achse) - ein einfacher Ein/Aus-Button genügt der Anforderung.
+const GRID_STEP_PERCENT = 5;
 
 const EDITOR_STYLES = `
   :host { display: block; }
@@ -1111,6 +1278,12 @@ const EDITOR_STYLES = `
   }
   .mdk-btn:hover { background: var(--secondary-background-color, rgba(0, 0, 0, 0.06)); }
   .mdk-btn ha-icon { --mdc-icon-size: 16px; }
+  .mdk-btn-active {
+    background: var(--primary-color, #03a9f4);
+    color: var(--text-primary-color, #fff);
+    border-color: var(--primary-color, #03a9f4);
+  }
+  .mdk-btn-active:hover { background: var(--primary-color, #03a9f4); }
   .mdk-add-row { margin-top: 12px; }
   .mdk-add-row-label { font-size: 0.85em; color: var(--secondary-text-color, #727272); margin-bottom: 4px; }
   .mdk-add-row-split { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
@@ -1118,6 +1291,20 @@ const EDITOR_STYLES = `
 
   /* Canvas-Einstellungen + Drag-Vorschau im Editor */
   .mdk-canvas-settings { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+  .mdk-canvas-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  /* Ausrichtungsraster (per Button ein-/ausblendbar, siehe
+     _syncGridOverlay()) - eigene, pointer-events-lose Overlay-Ebene statt
+     Teil des background-image, damit ein evtl. gesetztes
+     Canvas-Hintergrundbild unangetastet bleibt. */
+  .mdk-grid-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: none;
+    background-image: linear-gradient(to right, rgba(127, 127, 127, 0.35) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(127, 127, 127, 0.35) 1px, transparent 1px);
+    background-size: 5% 5%;
+  }
   .mdk-canvas-editor {
     position: relative;
     width: 100%;
@@ -1188,6 +1375,10 @@ class UiKarteCardEditor extends HTMLElement {
     this._positionInputs = {};
     this._listEntitiesContainers = {};
     this._built = false;
+    // Reines Editor-UI-Komfortmerkmal (kein Bestandteil der gespeicherten
+    // Kartenkonfiguration) - ob das Ausrichtungsraster gerade ein- oder
+    // ausgeblendet ist, siehe _syncGridOverlay()/_attachDrag().
+    this._gridEnabled = false;
   }
 
   setConfig(config) {
@@ -1277,8 +1468,25 @@ class UiKarteCardEditor extends HTMLElement {
     const dragHint = document.createElement("div");
     dragHint.className = "mdk-editor-hint";
     dragHint.textContent =
-      "Elemente hier mit der Maus (oder dem Finger) frei verschieben - die Kartenvorschau oben aktualisiert sich dabei live mit. Für die exakte Position lassen sich X/Y unten bei jedem Element auch direkt eingeben.";
+      "Elemente hier mit der Maus (oder dem Finger) frei verschieben - die Kartenvorschau oben aktualisiert sich dabei live mit. Für die exakte Position lassen sich X/Y unten bei jedem Element auch direkt eingeben. Über den Raster-Button lässt sich beim Ziehen eine Ausrichtungshilfe ein-/ausblenden.";
     container.appendChild(dragHint);
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "mdk-canvas-toolbar";
+    const gridBtn = document.createElement("button");
+    gridBtn.type = "button";
+    gridBtn.className = "mdk-btn mdk-grid-toggle";
+    gridBtn.setAttribute("aria-pressed", "false");
+    gridBtn.innerHTML = `<ha-icon icon="mdi:grid"></ha-icon><span>Raster</span>`;
+    gridBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      this._gridEnabled = !this._gridEnabled;
+      gridBtn.classList.toggle("mdk-btn-active", this._gridEnabled);
+      gridBtn.setAttribute("aria-pressed", String(this._gridEnabled));
+      this._syncGridOverlay();
+    });
+    toolbar.appendChild(gridBtn);
+    container.appendChild(toolbar);
 
     this._canvasPreview = document.createElement("div");
     this._canvasPreview.className = "mdk-canvas-editor";
@@ -1416,6 +1624,11 @@ class UiKarteCardEditor extends HTMLElement {
     this._canvasPreview.style.height = `${this._config.canvas.height}px`;
     this._syncCanvasPreviewBackground();
 
+    this._gridOverlay = document.createElement("div");
+    this._gridOverlay.className = "mdk-grid-overlay";
+    this._canvasPreview.appendChild(this._gridOverlay);
+    this._syncGridOverlay();
+
     const elements = this._config.elements || [];
     if (!elements.length) {
       const hint = document.createElement("div");
@@ -1427,6 +1640,16 @@ class UiKarteCardEditor extends HTMLElement {
     elements.forEach((elementConfig, index) => {
       this._canvasPreview.appendChild(this._buildCanvasMarker(elementConfig, index));
     });
+  }
+
+  // Blendet die Raster-Overlay-Ebene je nach this._gridEnabled ein/aus -
+  // eigene Methode statt Inline-Logik, weil sowohl der Raster-Button
+  // (sofortiges Umschalten) als auch _rebuildCanvasPreview() (nach jedem
+  // strukturellen Rebuild, siehe Modulkommentar oben) den aktuellen Zustand
+  // synchron halten müssen.
+  _syncGridOverlay() {
+    if (!this._gridOverlay) return;
+    this._gridOverlay.style.display = this._gridEnabled ? "block" : "none";
   }
 
   _elementMarkerIcon(elementConfig) {
@@ -1480,8 +1703,19 @@ class UiKarteCardEditor extends HTMLElement {
 
       const applyPosition = (clientX, clientY) => {
         if (!rect.width || !rect.height) return;
-        const x = round1(clampNumber(((clientX - rect.left) / rect.width) * 100, 0, 100, elementConfigAt(index).x));
-        const y = round1(clampNumber(((clientY - rect.top) / rect.height) * 100, 0, 100, elementConfigAt(index).y));
+        let x = clampNumber(((clientX - rect.left) / rect.width) * 100, 0, 100, elementConfigAt(index).x);
+        let y = clampNumber(((clientY - rect.top) / rect.height) * 100, 0, 100, elementConfigAt(index).y);
+        // Bei aktiviertem Raster (siehe Button oben am Canvas/
+        // this._gridEnabled) auf das nächste Vielfache von
+        // GRID_STEP_PERCENT einrasten - erst NACH dem Clamping runden,
+        // damit z.B. 100% (Rand) nicht durch Rundung wieder außerhalb des
+        // gültigen Bereichs landet.
+        if (this._gridEnabled) {
+          x = clampNumber(Math.round(x / GRID_STEP_PERCENT) * GRID_STEP_PERCENT, 0, 100, x);
+          y = clampNumber(Math.round(y / GRID_STEP_PERCENT) * GRID_STEP_PERCENT, 0, 100, y);
+        }
+        x = round1(x);
+        y = round1(y);
         marker.style.left = `${x}%`;
         marker.style.top = `${y}%`;
         this._updateElement(index, { x, y });
@@ -1895,8 +2129,12 @@ class UiKarteCardEditor extends HTMLElement {
         </div>
       </div>
       <div class="mdk-field-row">
-        <div class="mdk-field-label">Anzuzeigender/abzugleichender Wert</div>
+        <div class="mdk-field-label">Anzuzeigender/abzugleichender Wert (vorrangig)</div>
         <div class="mdk-attribute-slot"></div>
+      </div>
+      <div class="mdk-field-row">
+        <div class="mdk-field-label">Zusätzliche Attribute unter dem Zustand (optional)</div>
+        <div class="mdk-extra-attrs-slot"></div>
       </div>
       <div class="mdk-colors-slot"></div>
     `;
@@ -1912,18 +2150,20 @@ class UiKarteCardEditor extends HTMLElement {
     iconInput.value = entityConfig.icon || "";
 
     const attributeSlot = wrapper.querySelector(".mdk-attribute-slot");
+    const extraAttrsSlot = wrapper.querySelector(".mdk-extra-attrs-slot");
     const colorsSlot = wrapper.querySelector(".mdk-colors-slot");
 
+    // Vorrangiger Wert: Hauptzustand (Standard) ODER genau ein Attribut -
+    // bestimmt sowohl die Anzeige als auch, wogegen die
+    // Wert->Farbe-Zuordnung unten abgleicht (siehe resolveEntityColor()).
+    // Die Optionsliste enthält je Attribut direkt den aktuell gemeldeten
+    // Wert als Vorschau (z.B. "battery_level: 42").
     const rebuildAttributeCombo = () => {
       attributeSlot.innerHTML = "";
       const current = getEntity();
       const stateObj = this._hass && this._hass.states ? this._hass.states[current.entity] : undefined;
-      const options = [{ value: "", label: "Zustand (state)" }];
-      if (stateObj && stateObj.attributes) {
-        Object.keys(stateObj.attributes).forEach((key) => options.push({ value: key, label: `Attribut: ${key}` }));
-      }
       const combo = buildCombobox({
-        options,
+        options: buildAttributeOptions(stateObj, { includeStateOption: true }),
         value: current.attribute || "",
         customLabel: "Anderes Attribut (Name eingeben) …",
         placeholder: "z.B. battery_level",
@@ -1933,6 +2173,76 @@ class UiKarteCardEditor extends HTMLElement {
         },
       });
       attributeSlot.appendChild(combo.element);
+    };
+
+    // Zusätzliche, rein informative Attribut-Zeilen, die unter dem
+    // vorrangigen Wert angezeigt werden (siehe renderExtraAttributeLines())
+    // - fließen NICHT in die Wert->Farbe-Zuordnung ein, die bleibt immer
+    // auf den vorrangigen Wert oben beschränkt. Je Zeile lässt sich per
+    // Dropdown genau festlegen, ob ein einzelnes Attribut (mit
+    // Wert-Vorschau) oder "Alle Attribute" (gefiltert) gemeint ist.
+    const rebuildExtraAttrs = () => {
+      extraAttrsSlot.innerHTML = "";
+      const current = getEntity();
+      const stateObj = this._hass && this._hass.states ? this._hass.states[current.entity] : undefined;
+      const rows = current.extra_attributes || [];
+
+      const list = document.createElement("div");
+      list.className = "mdk-color-rules";
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "mdk-color-rules-empty";
+        empty.textContent = "Keine zusätzlichen Attribute - unten hinzufügen.";
+        list.appendChild(empty);
+      } else {
+        rows.forEach((row, rowIndex) => {
+          const rowWrap = document.createElement("div");
+          rowWrap.className = "mdk-color-rule-row";
+
+          const combo = buildCombobox({
+            options: buildAttributeOptions(stateObj, { includeAllOption: true }),
+            value: row.attribute || ALL_ATTRIBUTES_VALUE,
+            customLabel: "Anderes Attribut (Name eingeben) …",
+            placeholder: "Attributname",
+            onChange: (value) => {
+              const next = (getEntity().extra_attributes || []).slice();
+              next[rowIndex] = { attribute: value };
+              patchEntity({ extra_attributes: next });
+            },
+          });
+          combo.element.classList.add("mdk-color-rule-state");
+          rowWrap.appendChild(combo.element);
+
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "mdk-icon-btn";
+          removeBtn.title = "Zeile entfernen";
+          removeBtn.innerHTML = `<ha-icon icon="mdi:trash-can-outline"></ha-icon>`;
+          removeBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const next = (getEntity().extra_attributes || []).slice();
+            next.splice(rowIndex, 1);
+            patchEntity({ extra_attributes: next });
+            rebuildExtraAttrs();
+          });
+          rowWrap.appendChild(removeBtn);
+
+          list.appendChild(rowWrap);
+        });
+      }
+      extraAttrsSlot.appendChild(list);
+
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "mdk-btn";
+      addBtn.innerHTML = `<ha-icon icon="mdi:plus"></ha-icon><span>Attribut hinzufügen</span>`;
+      addBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        const next = [...(getEntity().extra_attributes || []), { attribute: ALL_ATTRIBUTES_VALUE }];
+        patchEntity({ extra_attributes: next });
+        rebuildExtraAttrs();
+      });
+      extraAttrsSlot.appendChild(addBtn);
     };
 
     const rebuildColorSection = () => {
@@ -1954,10 +2264,11 @@ class UiKarteCardEditor extends HTMLElement {
     entityPicker.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
       const value = ev.detail.value || "";
-      patchEntity({ entity: value, attribute: "" });
+      patchEntity({ entity: value, attribute: "", extra_attributes: [] });
       const label = nameInput.value || value || "Sensor";
       if (onLabelChange) onLabelChange(label);
       rebuildAttributeCombo();
+      rebuildExtraAttrs();
       rebuildColorSection();
     });
     this._pickers.push(entityPicker);
@@ -1973,6 +2284,7 @@ class UiKarteCardEditor extends HTMLElement {
     });
 
     rebuildAttributeCombo();
+    rebuildExtraAttrs();
     rebuildColorSection();
 
     return wrapper;
